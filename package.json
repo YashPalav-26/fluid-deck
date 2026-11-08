@@ -1,0 +1,29 @@
+{
+  "name": "fluid-deck",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "packageManager": "pnpm@11.13.0",
+  "engines": {
+    "node": ">=26.0.0 <27"
+  },
+  "scripts": {
+    "dev:web": "pnpm --filter @fluid-deck/web dev",
+    "dev:ext": "pnpm --filter @fluid-deck/extension dev",
+    "build": "pnpm -r --filter \"./apps/*\" build",
+    "build:ext": "pnpm --filter @fluid-deck/extension build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "lint": "eslint .",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.4.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.20.0",
+    "vitest": "^3.2.0"
+  }
+}

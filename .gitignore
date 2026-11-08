@@ -1,0 +1,15 @@
+node_modules/
+.claude/
+.remember/
+.pnpm-store/
+dist/
+.output/
+.wxt/
+build/
+coverage/
+test-results/
+playwright-report/
+*.local
+.DS_Store
+Thumbs.db
+*.log
