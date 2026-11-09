@@ -12,6 +12,7 @@
   "dependencies": {
     "@fluid-deck/core": "workspace:*",
     "@fluid-deck/ui": "workspace:*",
+    "@tanstack/react-query": "^5.107.1",
     "dexie": "^4.4.7",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
