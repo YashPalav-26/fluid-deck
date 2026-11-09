@@ -257,9 +257,22 @@ Build a premium, full-stack Personal Digital Library and Smart Bookmark Manageme
 - Full report: `docs/SPRINT_2_IMPLEMENTATION_REPORT.md`; developer notes: `docs/architecture/DATABASE_IMPLEMENTATION_NOTES.md`
 - Closure audit (2026-11-08): `docs/SPRINT_2_CLOSURE_REVIEW.md` — re-verified schema/indexes against Phase 2.2, confirmed the migration test uses a genuine v1 database, confirmed `test` 100/100, typecheck, lint, format and build unchanged; **no defects, no code changes**. Tracked deferrals: DB-005 backup restore (IMPORT-006/007/008), DB-004 boot wiring (UI-001), DB-006 manual 2-tab check, U4 exception-host decision, real-browser IndexedDB validation.
 
+## Completed Work (Git checkpoint, 2026-11-09)
+- Initial checkpoint `7899782` (`78997825acd457fc9d1b0b473f259a16ddd7e97f`, 83 files) preserved as-is; post-commit audit found `packages/` untracked though apps already import `@fluid-deck/core`, `@fluid-deck/ui`, `@fluid-deck/extension-core` — clean checkout could not build.
+- Follow-up `ce99623` (`ce99623105089b2a36b205a9ab74d8bc896b7a54`, 23 files, `fix: include missing shared workspace packages`): `packages/core`, `packages/extension-core`, `packages/ui` source/config/tests only. `poc/`, node_modules, build output, `.claude/`, `.remember/`, `.freebuff/` excluded. Original commit not amended/rebased; no remote, no push.
+- Verified: `pnpm install --frozen-lockfile`, `typecheck` 5/5, `test` 14 files / 100 tests, `build` (web 104.79 kB gzip; chrome-mv3 194.91 kB; firefox-mv3 195.03 kB). Full report: `docs/GIT_CHECKPOINT_REPORT.md`.
+
+## Completed Work (Phase 4 Sprint 3 / M4, 2026-11-09)
+- Scope per task breakdown M4 (roadmap's Sprint 2 block spanned M3–M4; Sprint 2 delivered M3 only): UI-001 app shell + sidebar + URL-param routing (one route, back/forward via pushState/popstate), UI-002 resource grid + 7-variant cards (U3) with 500-item cap + 50-card growing window, UI-003 TanStack Query (`@tanstack/react-query`, only new dep) + 4 Contexts (theme/shell/dialog/toast) with post-commit invalidation. Plus DB-004 boot leg: `openDatabase()` + `checkIntegrity()` wired in `main.tsx` with explicit DB-error screen and blocked/versionchange banners.
+- Services layer added (`services/library.ts`) thin-wrapping Sprint 2 repositories; features never import repositories directly. Keyword search (`q`) intentionally NOT implemented (SEARCH-002/UI-004, M7); Trash uses `?view=trash` outside the core ViewState schema (documented deviation).
+- Scope conflict recorded: implementation plan §7 M4 names UI-001–005, breakdown assigns UI-004→M7, UI-005→M5 — implemented UI-001–003 only.
+- Verified: `test` 18 files / 110 tests (10 new), `typecheck` 5/5, `lint` clean, `prettier --check` clean, `build` (web 146.34 kB gzip — inside proposed 250 kB budget; chrome-mv3 194.91 kB; firefox-mv3 195.03 kB), `test:e2e` 3/3 including real-Chromium boot creating the `fluid-deck` IndexedDB database.
+- Not done: search UI/palette/details/settings (UI-004/005/009/010), collection/tag management (UI-006/007, M5), capture (EXT-*, M6), manual two-tab check (DB-006), U4 host list (still empty), Firefox popup click. No commit made — awaiting approval.
+- Full report: `docs/SPRINT_3_IMPLEMENTATION_REPORT.md`
+
 ## Next Action
-User: approve Sprint 2 closure (`docs/SPRINT_2_CLOSURE_REVIEW.md`) and authorize the next step. Sprint 3 and UI-001–003 are NOT authorized — do not start them unprompted.
-Before Sprint 3: wire `openDatabase()` + `checkIntegrity()` at boot, obtain the U4 exception-host decision, commit the tree, run one real-browser IndexedDB check. Outstanding from Sprint 1: one Firefox popup click (`Ready — fluiddeck.capture v1`).
+User: review/approve Sprint 3 (`docs/SPRINT_3_IMPLEMENTATION_REPORT.md`), commit the tree (including checkpoint docs), and authorize the next milestone. Sprint 4 NOT started — do not start it unprompted.
+Still outstanding: manual two-tab versionchange check (DB-006), U4 exception-host decision, one Firefox popup click. Awaiting Sprint 3 approval before any commit or Sprint 4 work.
 
 ## Approval Status
 Phase 0: Complete
@@ -284,4 +297,4 @@ Phase 2.8: Complete (performance budgets & accessibility)
 Phase 2.9: Complete (ADRs + final architecture review — READY FOR PHASE 3 WITH CONDITIONS)
 Phase 2: Architecture complete
 Phase 3: Complete (implementation planning — 4 docs, ready for approval)
-Phase 4: In progress — Sprint 1 complete (2026-11-08); Sprint 2 M3 complete, audited and recommended for closure (2026-11-08); Sprint 3 not started
+Phase 4: In progress — Sprint 1 complete (2026-11-08); Sprint 2 M3 complete, audited and recommended for closure (2026-11-08); Git checkpoint `7899782` + package follow-up `ce99623` complete (2026-11-09); Sprint 3 (M4) implemented, awaiting approval (2026-11-09); Sprint 4 not started
