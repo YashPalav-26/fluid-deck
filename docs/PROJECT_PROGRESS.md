@@ -4,7 +4,7 @@
 Build a premium, full-stack Personal Digital Library and Smart Bookmark Management Platform. Users save, organize, categorize, search, and revisit websites, software, games, AI tools, developer resources, learning materials, articles, design references, and productivity services.
 
 ## Current Phase: 4 — Implementation, Sprint 2 (Core domain & database)
-**Status:** Sprint 2 M3 scope complete and audited (independent closure review recommends closure); Sprint 3 NOT started — awaiting user approval
+**Status:** Sprint 2 M3 complete (audited); Sprint 3 M4 complete, accepted, committed and pushed (2026-11-09); Sprint 4 (M5) planning complete, implementation NOT started
 
 ## Completed Work (Phase 0)
 - Step 0.1: Workflow initialization — confirmed project path, empty folder, skill activation
@@ -268,11 +268,25 @@ Build a premium, full-stack Personal Digital Library and Smart Bookmark Manageme
 - Scope conflict recorded: implementation plan §7 M4 names UI-001–005, breakdown assigns UI-004→M7, UI-005→M5 — implemented UI-001–003 only.
 - Verified: `test` 18 files / 110 tests (10 new), `typecheck` 5/5, `lint` clean, `prettier --check` clean, `build` (web 146.34 kB gzip — inside proposed 250 kB budget; chrome-mv3 194.91 kB; firefox-mv3 195.03 kB), `test:e2e` 3/3 including real-Chromium boot creating the `fluid-deck` IndexedDB database.
 - Not done: search UI/palette/details/settings (UI-004/005/009/010), collection/tag management (UI-006/007, M5), capture (EXT-*, M6), manual two-tab check (DB-006), U4 host list (still empty), Firefox popup click. No commit made — awaiting approval.
-- Full report: `docs/SPRINT_3_IMPLEMENTATION_REPORT.md`
+- Full report: `docs/SPRINT_3_IMPLEMENTATION_REPORT.md`; acceptance: `docs/SPRINT_3_ACCEPTANCE_REVIEW.md` (4 commits total: `e944794` deps, `8f4d576` UI, `e318146` docs — all pushed to `origin/main`, remote hash `e318146` confirmed 2026-11-09)
+
+## Planning (Phase 4 Sprint 4 / M5, 2026-11-09)
+- M5 task scope per task breakdown: UI-005 (palette), UI-006 (collections), UI-007 (tags), UI-008 (inbox), UI-009 (dialogs/toast), UI-010 (settings); ~21h; all dependencies satisfied by Sprints 2-3.
+- Library research complete: adopt `cmdk` (palette), `@radix-ui/react-dialog` + `sonner` (dialogs/toasts), `@dnd-kit/core` + `@dnd-kit/sortable` + `@dnd-kit/utilities` (reorder), `lucide-react` (icons), Testing Library + axe-core (a11y tests). Shipped addition measured 49.11 kB gzip (was ≤60 kB target).
+- Plan: `docs/SPRINT_4_IMPLEMENTATION_PLAN.md`; technology evaluation: `docs/SPRINT_4_TECHNOLOGY_EVALUATION.md`. Sprint 4 implementation COMPLETE (2026-11-09) — see below.
+
+## Completed Work (Phase 4 Sprint 4 / M5, 2026-11-09)
+- Implementation order: UI-009 → UI-006 → UI-007 → UI-008 → UI-010 → UI-005. Dialog/Provider APIs from Sprint 3 preserved (`useDialog`/`useToast`); internals moved to Radix (`contexts/dialog.tsx`) + Sonner (`contexts/toast.tsx`) with `<Toaster>` in `main.tsx`.
+- Sidebar now hosts `CollectionsPanel` (U1 reorder via `@dnd-kit/core` + `@dnd-kit/sortable` + `@dnd-kit/utilities`, persisted through Sprint 2 `reorderCollection`; U2 depth warn-only) and `TagsPanel` (rename/merge via Sprint 2 `renameTag/mergeTags`); `InboxPage` (dated/linked per `services/inbox.ts`) and `SettingsPage` (theme + U5 retention + explicit-confirm purge) render via the `?view=` URL param (`useViewState.page`); `CommandPalette` (cmdk over collections/tags) on header `⌘K` button + Ctrl/Cmd+K.
+- Theme write-only bug FIXED (Sprint 3 finding 1): `ThemeProvider` loads the persisted preference on mount; settings writes via the preferences repository.
+- DOM component tests added (Testing Library + jsdom + `fake-indexeddb/auto` for singleton DB): UI-009 focus trap/restore, UI-007 rename propagation, UI-006 buildTree. `vitest.config.ts` include widened to `*.test.tsx`. Axe-core audit in real Chromium (`e2e/m5.spec.ts`): zero violations.
+- New devDeps: `@testing-library/react`, `@testing-library/jest-dom`, `jsdom` (apps/web), `@axe-core/playwright` (workspace root — e2e runner lives there), plus the approved runtime set above.
+- Verified: `test` 22 files / 116 tests, `typecheck` 5/5, `lint` clean, `prettier --check` clean, `build` web 195.45 kB gzip (delta +49.11 vs Sprint 3's 146.34 — inside the ≤60 kB target), `test:e2e` 6/6. No commit made — awaiting approval.
+- Full report: `docs/SPRINT_4_IMPLEMENTATION_REPORT.md`
 
 ## Next Action
-User: review/approve Sprint 3 (`docs/SPRINT_3_IMPLEMENTATION_REPORT.md`), commit the tree (including checkpoint docs), and authorize the next milestone. Sprint 4 NOT started — do not start it unprompted.
-Still outstanding: manual two-tab versionchange check (DB-006), U4 exception-host decision, one Firefox popup click. Awaiting Sprint 3 approval before any commit or Sprint 4 work.
+User: review/approve Sprint 4 (`docs/SPRINT_4_IMPLEMENTATION_REPORT.md`); independent acceptance audit on request. If approved, group-commit (deps / implementation / docs). Sprint 5 NOT started — do not start it unprompted.
+Still outstanding: manual two-tab versionchange check (DB-006), U4 canonicalization exception-host list, one Firefox popup click, manual drag-reorder keyboard pass (M9).
 
 ## Approval Status
 Phase 0: Complete
@@ -297,4 +311,4 @@ Phase 2.8: Complete (performance budgets & accessibility)
 Phase 2.9: Complete (ADRs + final architecture review — READY FOR PHASE 3 WITH CONDITIONS)
 Phase 2: Architecture complete
 Phase 3: Complete (implementation planning — 4 docs, ready for approval)
-Phase 4: In progress — Sprint 1 complete (2026-11-08); Sprint 2 M3 complete, audited and recommended for closure (2026-11-08); Git checkpoint `7899782` + package follow-up `ce99623` complete (2026-11-09); Sprint 3 (M4) implemented, awaiting approval (2026-11-09); Sprint 4 not started
+Phase 4: In progress — Sprint 1 complete (2026-11-08); Sprint 2 M3 complete, audited and recommended for closure (2026-11-08); Git checkpoint `7899782` + package follow-up `ce99623` complete (2026-11-09); Sprint 3 (M4) implemented, accepted, committed and pushed (`e944794` + `8f4d576` + `e318146` = `origin/main` @ `e318146`, 2026-11-09); Sprint 4 (M5) planned (plan + technology evaluation), implementation NOT started
