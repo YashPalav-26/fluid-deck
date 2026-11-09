@@ -15,16 +15,20 @@ import type { ViewState } from "@fluid-deck/core";
 export interface RouteState {
   view: ViewState;
   trash: boolean;
+  page: "inbox" | "settings" | null;
 }
 
 export function parseRoute(search: string): RouteState {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-  return { view: decodeViewState(search), trash: params.get("view") === "trash" };
+  const view = params.get("view");
+  const page = view === "inbox" || view === "settings" ? view : null;
+  return { view: decodeViewState(search), trash: view === "trash", page };
 }
 
 export function buildRouteSearch(route: RouteState): string {
   const params = new URLSearchParams(encodeViewState(route.view));
   if (route.trash) params.set("view", "trash");
+  if (route.page) params.set("view", route.page);
   const encoded = params.toString();
   return encoded ? `?${encoded}` : "";
 }
@@ -33,6 +37,8 @@ export function useViewState(): RouteState & {
   updateView: (patch: Partial<ViewState>, options?: { trash?: boolean }) => void;
   goAll: () => void;
   goTrash: () => void;
+  goInbox: () => void;
+  goSettings: () => void;
 } {
   const [route, setRoute] = useState<RouteState>(() => parseRoute(window.location.search));
 
@@ -52,13 +58,28 @@ export function useViewState(): RouteState & {
       navigate({
         view: { ...route.view, ...patch },
         trash: options.trash ?? route.trash,
+        page: null,
       });
     },
     [navigate, route],
   );
 
-  const goAll = useCallback(() => navigate({ view: EMPTY_VIEW_STATE, trash: false }), [navigate]);
-  const goTrash = useCallback(() => navigate({ view: route.view, trash: true }), [navigate, route]);
+  const goAll = useCallback(
+    () => navigate({ view: EMPTY_VIEW_STATE, trash: false, page: null }),
+    [navigate],
+  );
+  const goTrash = useCallback(
+    () => navigate({ view: route.view, trash: true, page: null }),
+    [navigate, route],
+  );
+  const goInbox = useCallback(
+    () => navigate({ view: route.view, trash: false, page: "inbox" }),
+    [navigate, route],
+  );
+  const goSettings = useCallback(
+    () => navigate({ view: route.view, trash: false, page: "settings" }),
+    [navigate, route],
+  );
 
-  return { ...route, updateView, goAll, goTrash };
+  return { ...route, updateView, goAll, goTrash, goInbox, goSettings };
 }

@@ -1,11 +1,13 @@
 /**
- * UI-003 - toast context (Phase 2.5 §4): transient feedback only.
- * Toasts render in an aria-live region and auto-dismiss; they never
- * carry user content and never substitute for a Dexie commit message —
- * "saved" is only ever reported after a repository write resolves.
+ * UI-009 — toast context (Phase 2.5 §4): transient feedback only.
+ * Internals swapped to Sonner (zero-dep, aria-live); the `useToast()` API
+ * (pushToast / dismissToast / toasts) is preserved from Sprint 3 so
+ * existing consumers don't change. Toasts never carry user content and
+ * never substitute for a Dexie commit message.
  */
 import { createContext, useCallback, useContext, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { toast as sonnerToast } from "sonner";
 
 export interface Toast {
   id: string;
@@ -26,30 +28,18 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const dismissToast = useCallback((id: string) => {
     setToasts((current) => current.filter((t) => t.id !== id));
+    sonnerToast.dismiss();
   }, []);
-  const pushToast = useCallback(
-    (message: string) => {
-      counter.current += 1;
-      const id = `toast-${counter.current}`;
-      setToasts((current) => [...current.slice(-2), { id, message }]);
-      window.setTimeout(() => dismissToast(id), 4000);
-    },
-    [dismissToast],
-  );
+  const pushToast = useCallback((message: string) => {
+    counter.current += 1;
+    const id = `toast-${counter.current}`;
+    setToasts((current) => [...current.slice(-2), { id, message }]);
+    sonnerToast(message, { id });
+  }, []);
 
   return (
     <ToastContext.Provider value={{ toasts, pushToast, dismissToast }}>
       {children}
-      <div aria-live="polite" className="pointer-events-none fixed right-4 bottom-4 z-50 space-y-2">
-        {toasts.map((toast) => (
-          <div
-            key={toast.id}
-            className="pointer-events-auto rounded-md bg-slate-900 px-4 py-2 text-sm text-white shadow-lg"
-          >
-            {toast.message}
-          </div>
-        ))}
-      </div>
     </ToastContext.Provider>
   );
 }

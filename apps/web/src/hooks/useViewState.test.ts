@@ -12,6 +12,7 @@ describe("parseRoute / buildRouteSearch", () => {
     const route = {
       view: { ...EMPTY_VIEW_STATE, collection, type: "article" as const, sort: "oldest" as const },
       trash: false,
+      page: null,
     };
     const search = buildRouteSearch(route);
     expect(search).toContain(`collection=${collection}`);
@@ -28,6 +29,7 @@ describe("parseRoute / buildRouteSearch", () => {
     expect(parseRoute("?type=nope&sort=nope")).toEqual({
       view: EMPTY_VIEW_STATE,
       trash: false,
+      page: null,
     });
   });
 });

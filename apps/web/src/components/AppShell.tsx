@@ -11,9 +11,10 @@ import { useTheme } from "../contexts/theme.tsx";
 interface AppShellProps {
   sidebar: ReactNode;
   children: ReactNode;
+  onOpenPalette?: () => void;
 }
 
-export function AppShell({ sidebar, children }: AppShellProps) {
+export function AppShell({ sidebar, children, onOpenPalette }: AppShellProps) {
   const { sidebarOpen, toggleSidebar, setSidebarOpen } = useShell();
   const { theme, toggleTheme } = useTheme();
 
@@ -39,6 +40,14 @@ export function AppShell({ sidebar, children }: AppShellProps) {
         <header className="flex items-center justify-between gap-4 border-b px-4 py-3 pl-12 md:pl-4 dark:border-slate-800">
           <h1 className="text-lg font-semibold tracking-tight">{APP_NAME}</h1>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              aria-label="⌘K — open command palette"
+              className="rounded-md border px-2 py-1 text-sm"
+              onClick={onOpenPalette}
+            >
+              ⌘K
+            </button>
             <button
               type="button"
               className="hidden rounded-md border px-2 py-1 text-sm md:block"

@@ -6,19 +6,35 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { db } from "../persistence/db.ts";
-import { setPreference } from "../repositories/preferences.ts";
+import { getPreference, setPreference } from "../repositories/preferences.ts";
 
 export type Theme = "light" | "dark";
 
 interface ThemeContextValue {
   theme: Theme;
   toggleTheme: () => void;
+  setTheme: (theme: Theme) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>("light");
+
+  // UI-010: load the persisted theme preference once on mount (fixes the
+  // Sprint 3 write-only behavior — the theme used to reset every reload).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const stored = await getPreference(db, "theme").catch(() => undefined);
+      if (!cancelled && (stored === "dark" || stored === "light")) {
+        setTheme(stored);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
@@ -33,7 +49,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  return <ThemeContext.Provider value={{ theme, toggleTheme }}>{children}</ThemeContext.Provider>;
+  const setStoredTheme = useCallback((next: Theme) => {
+    setTheme(next);
+    void setPreference(db, "theme", next).catch(() => undefined);
+  }, []);
+
+  return (
+    <ThemeContext.Provider value={{ theme, toggleTheme, setTheme: setStoredTheme }}>
+      {children}
+    </ThemeContext.Provider>
+  );
 }
 
 export function useTheme(): ThemeContextValue {

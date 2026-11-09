@@ -2,8 +2,12 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    // Domain/database suites only. React component tests arrive with UI-001+.
-    include: ["packages/*/src/**/*.test.ts", "apps/web/src/**/*.test.ts"],
+    // Domain/database suites (node) + DOM tests (jsdom via per-file pragma) since M5.
+    include: [
+      "packages/*/src/**/*.test.ts",
+      "apps/web/src/**/*.test.ts",
+      "apps/web/src/**/*.test.tsx",
+    ],
     environment: "node",
   },
 });
