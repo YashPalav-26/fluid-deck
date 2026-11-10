@@ -97,6 +97,7 @@ export function isSupportedVersion(version: number): boolean {
 
 export * from "./outbox.ts";
 export * from "./capture.ts";
+export * from "./popup-status.ts";
 export * from "./alarm-driver.ts";
 export * from "./metadata.ts";
 export * from "./thumbnail.ts";

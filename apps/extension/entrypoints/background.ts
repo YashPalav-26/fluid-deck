@@ -6,21 +6,30 @@ import {
   PROTOCOL_VERSION,
   OutboxMachine,
   OUTBOX_STORAGE_KEY,
+  FAILED_CAPTURES_STORAGE_KEY,
+  POPUP_CAPTURE_MESSAGE,
   READ_METADATA_MESSAGE,
+  SAVED_CAPTURES_STORAGE_KEY,
+  addFailedCapture,
+  addSavedCapture,
   createAlarmAdapter,
   createCaptureService,
   effectiveDeadlineMs,
   fallbackMetadata,
   isCaptureMetadata,
+  toPopupCaptureResult,
 } from "@fluid-deck/extension-core";
 import type {
   AlarmApi,
   CaptureMetadata,
   CaptureResult,
   CaptureTrigger,
+  FailedCaptureEntry,
   OutboxEntry,
   OutboxRecord,
   OutboxStorage,
+  PopupCaptureResult,
+  SavedCaptureEntry,
 } from "@fluid-deck/extension-core";
 import { APP_URL_PATTERNS } from "../src/bridge-config.ts";
 
@@ -52,6 +61,58 @@ const storageAdapter: OutboxStorage = {
     await browser.storage.local.set({ [STORAGE_KEY]: records });
   },
 };
+
+/**
+ * EXT-006 - the two outbox-exit registries. When a record leaves the outbox
+ * (ACK after the web commit, or a permanent nack), a small durable entry is
+ * kept so the popup can still classify that page after the record is gone.
+ * It derives nothing for delivery and is never the capture path's authority.
+ */
+async function loadRegistry<T>(key: string): Promise<T[]> {
+  try {
+    const stored = await browser.storage.local.get(key);
+    const value = stored[key];
+    return Array.isArray(value) ? (value as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function persistRegistry<T>(key: string, entries: T[]): Promise<void> {
+  try {
+    await browser.storage.local.set({ [key]: entries });
+  } catch (error) {
+    console.info("[Fluid Deck] popup registry write skipped (%s) %o", key, error);
+  }
+}
+
+/** Called only after `outbox.handleAck` resolved for a validated ack. */
+async function rememberSavedCapture(entry: SavedCaptureEntry): Promise<void> {
+  await persistRegistry(
+    SAVED_CAPTURES_STORAGE_KEY,
+    addSavedCapture(entry, await loadRegistry<SavedCaptureEntry>(SAVED_CAPTURES_STORAGE_KEY)),
+  );
+}
+
+/** Called only after a validated permanent nack removed the record. */
+async function rememberFailedCapture(entry: FailedCaptureEntry): Promise<void> {
+  await persistRegistry(
+    FAILED_CAPTURES_STORAGE_KEY,
+    addFailedCapture(entry, await loadRegistry<FailedCaptureEntry>(FAILED_CAPTURES_STORAGE_KEY)),
+  );
+}
+
+/** draft url/canonical for registry entries, read before the record leaves. */
+function payloadFor(captureId: string): { url?: string; canonicalUrlHint?: string } | undefined {
+  const record = outbox.queue().find((r) => r.captureId === captureId);
+  if (!record) return undefined;
+  const payload = record.payload as { url?: unknown; canonicalUrlHint?: unknown };
+  return {
+    url: typeof payload.url === "string" ? payload.url : undefined,
+    canonicalUrlHint:
+      typeof payload.canonicalUrlHint === "string" ? payload.canonicalUrlHint : undefined,
+  };
+}
 
 const transport = new BridgeTransport({
   sendToTab: (tabId, message) => browser.tabs.sendMessage(tabId, message),
@@ -188,7 +249,7 @@ let lastCapture: CaptureResult | undefined;
 
 /**
  * Truthful feedback only: `accepted` means durable, never "saved". The ACK
- * arrives later and is the web app's statement.
+ * arrives later and is the web app's statement, surfaced by EXT-006.
  */
 function reportCapture(result: CaptureResult): void {
   if (result.status === "accepted") {
@@ -221,6 +282,43 @@ export async function captureTab(
   lastCapture = result;
   reportCapture(result);
   return result;
+}
+
+/** The tab id the popup passes with its request (its own tabs.query result). */
+export async function captureTabById(tabId: number): Promise<PopupCaptureResult> {
+  try {
+    const tab = await browser.tabs.get(tabId);
+    return toPopupCaptureResult(await captureTab(tab, "popup"));
+  } catch (error) {
+    console.info("[Fluid Deck] popup capture: tab %d unreadable %o", tabId, error);
+    return { status: "rejected", trigger: "popup", reason: "missing-url" };
+  }
+}
+
+/**
+ * EXT-006 — popup requests come only from extension-owned pages: an extension
+ * page running as its own tab still reports `sender.tab`, so a valid request
+ * is either a no-sender-tab extension page (the real popup) or a page under
+ * `chrome-extension://<runtime.id>/`. A normal web page can never qualify.
+ */
+function isPopupCaptureRequest(
+  message: unknown,
+  sender: { id?: string; tab?: { url?: string } | null },
+): message is { tabId?: number } {
+  if ((message as { type?: unknown } | null)?.type !== POPUP_CAPTURE_MESSAGE) return false;
+  if (sender.id !== browser.runtime.id) return false;
+  if (sender.tab === undefined || sender.tab === null) return true;
+  const url = sender.tab.url;
+  return typeof url === "string" && url.startsWith(`chrome-extension://${browser.runtime.id}/`);
+}
+
+/** Resolves the background result for the popup (sanitized for rendering). */
+async function handlePopupCapture(request: { tabId?: number }): Promise<PopupCaptureResult> {
+  const tabId = typeof request.tabId === "number" ? request.tabId : undefined;
+  if (tabId !== undefined) return captureTabById(tabId);
+  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+  if (tab?.id === undefined) return { status: "rejected", trigger: "popup", reason: "missing-url" };
+  return captureTabById(tab.id);
 }
 
 /** Keyboard command path: the command event carries no tab, so resolve the active one. */
@@ -285,21 +383,47 @@ function routeIncoming(message: unknown, sender: { tab?: { id?: number } }): voi
     if (!route) return;
     // Always mirror the ack into the outbox: the transport may already have
     // resolved the delivery promise, but a late ack must still clear the row.
-    void outbox.handleAck(route.captureId).catch(() => undefined);
+    const draft = payloadFor(route.captureId);
+    void outbox
+      .handleAck(route.captureId)
+      .then(() => {
+        // EXT-006: "saved" registry entry, written only after the ack that
+        // only exists because the Dexie transaction committed.
+        if (draft)
+          void rememberSavedCapture({
+            captureId: route.captureId,
+            url: draft.url ?? "",
+            canonicalUrlHint: draft.canonicalUrlHint,
+            savedAt: Date.now(),
+          });
+      })
+      .catch(() => undefined);
     return;
   }
 
   if (type === "capture.nack") {
     const route = transport.routeNack(tabId, message);
     if (!route?.permanent) return;
-    void outbox.handleNack(route.captureId, true).catch(() => undefined);
+    const draft = payloadFor(route.captureId);
+    void outbox
+      .handleNack(route.captureId, true)
+      .then(() => {
+        if (draft)
+          void rememberFailedCapture({
+            captureId: route.captureId,
+            url: draft.url,
+            code: route.code,
+            at: Date.now(),
+          });
+      })
+      .catch(() => undefined);
   }
 }
 
 /**
  * Internal test/diagnostics surface (service-worker global only — never
- * reachable from a page). The Playwright bridge test enqueues through it
- * without adding capture triggers early.
+ * reachable from a page). EXT-006 reads the same outbox; the Playwright
+ * bridge test enqueues through it without adding capture triggers early.
  */
 export interface FluidDeckTestApi {
   outbox: OutboxMachine;
@@ -352,6 +476,10 @@ export default defineBackground(() => {
   });
   browser.runtime.onMessage.addListener((message, sender) => {
     routeIncoming(message, sender);
+    if (isPopupCaptureRequest(message, sender)) {
+      // The returned promise is the popup's response (ext messaging).
+      return handlePopupCapture(message);
+    }
     return undefined;
   });
   browser.tabs.onRemoved.addListener((tabId) => {
