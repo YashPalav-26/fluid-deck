@@ -361,4 +361,3 @@ B2 onCommand→tabs.query ─┴→ captureTab() → createCaptureService.captur
 - `saved`-state display today depends on a validated ACK handling even for `duplicate` outcome (`handleAck` succeeds for both created and duplicate); index-suffix micro-UX differentiation is a natural EXT-007 follow-up if desired.
 - Restricted-URL surface shows an empty state for transient-tab-extractions (e.g. a page whose renderer hung) - the capture still resolves truthful state either way.
 - No production origin configured yet (build-time injection is deferred by the existing plan; both dev URLs only until then).
-
