@@ -13,5 +13,8 @@
   "dependencies": {
     "@fluid-deck/core": "workspace:*",
     "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "jsdom": "^31.0.0"
   }
 }

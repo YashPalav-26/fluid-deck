@@ -4,6 +4,7 @@
  */
 import { z } from "zod";
 import { RESOURCE_TYPES, httpUrlSchema } from "@fluid-deck/core";
+import type { CaptureMetadata } from "./metadata.ts";
 
 export const PROTOCOL = "fluiddeck.capture";
 export const PROTOCOL_VERSION = 1;
@@ -96,3 +97,24 @@ export function isSupportedVersion(version: number): boolean {
 
 export * from "./outbox.ts";
 export * from "./alarm-driver.ts";
+export * from "./metadata.ts";
+
+/** Maps EXT-002 metadata onto the frozen R-2 draft (validated at the boundary). */
+export function createCaptureDraft(input: {
+  url: string;
+  metadata: CaptureMetadata;
+  captureId: string;
+  capturedAt: number;
+}): CaptureDraft {
+  return captureDraftSchema.parse({
+    captureId: input.captureId,
+    url: input.url,
+    capturedAt: input.capturedAt,
+    source: "extension",
+    title: input.metadata.title,
+    description: input.metadata.description,
+    thumbnailUrl: input.metadata.imageUrl,
+    faviconUrl: input.metadata.faviconUrl,
+    canonicalUrlHint: input.metadata.canonicalUrl,
+  });
+}
