@@ -60,6 +60,9 @@ importers:
       '@fluid-deck/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@fluid-deck/extension-core':
+        specifier: workspace:*
+        version: link:../../packages/extension-core
       '@fluid-deck/ui':
         specifier: workspace:*
         version: link:../../packages/ui
