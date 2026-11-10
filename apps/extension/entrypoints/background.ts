@@ -1,14 +1,27 @@
 import {
   ALARM_NAME,
   BridgeTransport,
+  EXTRACTION_TIMEOUT_MS,
   PROTOCOL,
   PROTOCOL_VERSION,
   OutboxMachine,
   OUTBOX_STORAGE_KEY,
+  READ_METADATA_MESSAGE,
   createAlarmAdapter,
+  createCaptureService,
   effectiveDeadlineMs,
+  fallbackMetadata,
+  isCaptureMetadata,
 } from "@fluid-deck/extension-core";
-import type { AlarmApi, OutboxEntry, OutboxRecord, OutboxStorage } from "@fluid-deck/extension-core";
+import type {
+  AlarmApi,
+  CaptureMetadata,
+  CaptureResult,
+  CaptureTrigger,
+  OutboxEntry,
+  OutboxRecord,
+  OutboxStorage,
+} from "@fluid-deck/extension-core";
 import { APP_URL_PATTERNS } from "../src/bridge-config.ts";
 
 /**
@@ -23,6 +36,9 @@ import { APP_URL_PATTERNS } from "../src/bridge-config.ts";
  * When no app tab is reachable the machine's attempt resolves `"timeout"`,
  * the record stays durable, and the alarm wakes the worker again. Nothing is
  * dropped and nothing is delivered early.
+ *
+ * EXT-005 adds the two approved triggers (context menu, keyboard command).
+ * Both call the single `captureTab()` path — there is no second pipeline.
  */
 
 const STORAGE_KEY = OUTBOX_STORAGE_KEY;
@@ -109,6 +125,134 @@ export async function reconcile(): Promise<void> {
 
 export { outbox, transport };
 
+// ---------------------------------------------------------------------------
+// EXT-005 — capture triggers
+// ---------------------------------------------------------------------------
+
+/** Context-menu item id and command id; `wxt.config.ts` declares the command. */
+export const SAVE_MENU_ID = "fluid-deck:save-page";
+export const SAVE_COMMAND = "save-current-tab";
+
+/**
+ * One capture path for every trigger. Metadata comes from the EXT-002 live-DOM
+ * reader in the capture content script (an MV3 worker has no `DOMParser`, so
+ * `extractMetadata(url)` cannot parse here); the draft is the canonical shared
+ * schema; `outbox.enqueue` is the accepted boundary.
+ */
+const captureService = createCaptureService({
+  extract: extractForCapture,
+  enqueue: (entry) => outbox.enqueue(entry),
+  queueDepth: () => outbox.queue().length,
+});
+
+/** Resolves or rejects after `ms`; the timer never outlives the call. */
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error("metadata timeout")), ms);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+/**
+ * EXT-002 metadata for the target tab. Missing, restricted or unresponsive
+ * content scripts degrade to `fallbackMetadata` — the capture is still queued,
+ * it just keeps the URL-derived title. The 5 s budget is the approved
+ * extraction timeout.
+ */
+async function extractForCapture(target: {
+  url: string;
+  tabId?: number;
+}): Promise<CaptureMetadata> {
+  if (target.tabId === undefined) return fallbackMetadata(target.url);
+  try {
+    const response = await withTimeout(
+      browser.tabs.sendMessage(target.tabId, { type: READ_METADATA_MESSAGE }),
+      EXTRACTION_TIMEOUT_MS,
+    );
+    if (isCaptureMetadata(response)) return response;
+    console.info("[Fluid Deck] capture: content script returned no usable metadata");
+  } catch (error) {
+    console.info("[Fluid Deck] capture: live metadata unavailable %o", error);
+  }
+  return fallbackMetadata(target.url);
+}
+
+let lastCapture: CaptureResult | undefined;
+
+/**
+ * Truthful feedback only: `accepted` means durable, never "saved". The ACK
+ * arrives later and is the web app's statement.
+ */
+function reportCapture(result: CaptureResult): void {
+  if (result.status === "accepted") {
+    console.info("[Fluid Deck] capture accepted (%s) %o", result.trigger, {
+      captureId: result.captureId,
+      url: result.url,
+      degradedMetadata: result.degraded,
+      queueDepth: result.queueDepth,
+    });
+    return;
+  }
+  if (result.status === "rejected") {
+    console.info("[Fluid Deck] capture skipped (%s): %s %o", result.trigger, result.reason, {
+      url: result.url,
+    });
+    return;
+  }
+  console.error("[Fluid Deck] capture NOT queued (%s): outbox storage failure %o", result.trigger, {
+    url: result.url,
+    error: result.error,
+  });
+}
+
+/** Captures one known tab (context menu supplies it; the command resolves it). */
+export async function captureTab(
+  tab: { id?: number; url?: string } | undefined,
+  trigger: CaptureTrigger,
+): Promise<CaptureResult> {
+  const result = await captureService.capture({ url: tab?.url, tabId: tab?.id, trigger });
+  lastCapture = result;
+  reportCapture(result);
+  return result;
+}
+
+/** Keyboard command path: the command event carries no tab, so resolve the active one. */
+export async function captureActiveTab(trigger: CaptureTrigger): Promise<CaptureResult> {
+  try {
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+    return await captureTab(tab, trigger);
+  } catch (error) {
+    console.info("[Fluid Deck] capture skipped (%s): no readable active tab %o", trigger, error);
+    const result: CaptureResult = { status: "rejected", trigger, reason: "missing-url" };
+    lastCapture = result;
+    return result;
+  }
+}
+
+/**
+ * Menus are browser-persisted, so this only needs to run on install/update.
+ * `removeAll` first keeps it idempotent (a duplicate id would throw).
+ */
+export async function registerContextMenu(): Promise<void> {
+  try {
+    await browser.contextMenus.removeAll();
+    browser.contextMenus.create({
+      id: SAVE_MENU_ID,
+      title: "Save to Fluid Deck",
+      contexts: ["page"],
+    });
+  } catch (error) {
+    console.info("[Fluid Deck] capture: context menu registration skipped %o", error);
+  }
+}
+
 /** Alarm wake: reload durable state, rediscover tabs, and attempt the head. */
 export async function onAlarmWake(name: string): Promise<void> {
   if (name !== ALARM_NAME) return;
@@ -164,6 +308,14 @@ export interface FluidDeckTestApi {
   enqueue: (entry: OutboxEntry) => Promise<void>;
   tick: () => Promise<void>;
   queue: () => OutboxRecord[];
+  /** EXT-005: run the real trigger handler against the active tab / a known tab. */
+  captureActiveTab: (trigger: CaptureTrigger) => Promise<CaptureResult>;
+  captureTab: (
+    tab: { id?: number; url?: string } | undefined,
+    trigger: CaptureTrigger,
+  ) => Promise<CaptureResult>;
+  registerContextMenu: () => Promise<void>;
+  lastCapture: () => CaptureResult | undefined;
 }
 
 declare global {
@@ -177,6 +329,10 @@ globalThis.__fluidDeck = {
   enqueue: (entry) => outbox.enqueue(entry),
   tick: () => outbox.tick(),
   queue: () => outbox.queue(),
+  captureActiveTab,
+  captureTab,
+  registerContextMenu,
+  lastCapture: () => lastCapture,
 };
 
 export default defineBackground(() => {
@@ -187,6 +343,9 @@ export default defineBackground(() => {
   void reconcile();
   browser.runtime.onStartup.addListener(() => {
     void reconcile();
+    // Menus normally persist across restarts; re-creating is idempotent
+    // (`removeAll` first) and covers browsers that drop them.
+    void registerContextMenu();
   });
   browser.alarms.onAlarm.addListener((alarm) => {
     void onAlarmWake(alarm.name);
@@ -197,6 +356,20 @@ export default defineBackground(() => {
   });
   browser.tabs.onRemoved.addListener((tabId) => {
     transport.forgetTab(tabId);
+  });
+  // EXT-005 — context menu: the browser supplies the tab that was clicked, so
+  // no extra query (and no `tabs` permission) is needed.
+  browser.runtime.onInstalled.addListener(() => {
+    void registerContextMenu();
+  });
+  browser.contextMenus.onClicked.addListener((info, tab) => {
+    if (info.menuItemId !== SAVE_MENU_ID) return;
+    void captureTab(tab, "context-menu").catch(() => undefined);
+  });
+  // EXT-005 — keyboard command (`Ctrl+Shift+S` / `⌘⇧S`, declared in the manifest).
+  browser.commands.onCommand.addListener((command) => {
+    if (command !== SAVE_COMMAND) return;
+    void captureActiveTab("command").catch(() => undefined);
   });
   // Navigation can invalidate a target without closing the tab. A fresh load
   // re-runs the content script and announces `capture.ready` again.

@@ -15,6 +15,15 @@ export default defineConfig({
     version: "0.1.0",
     permissions: ["storage", "activeTab", "scripting", "contextMenus", "alarms"],
     host_permissions: ["<all_urls>"],
+    // EXT-005: the only keyboard trigger. `Ctrl+Shift+S` / `⌘⇧S` per PRD
+    // FR-CAP-008; `commands` is a manifest key, not an extra permission, and
+    // the user can rebind it in the browser's extension shortcuts page.
+    commands: {
+      "save-current-tab": {
+        suggested_key: { default: "Ctrl+Shift+S", mac: "Command+Shift+S" },
+        description: "Save the current page to Fluid Deck",
+      },
+    },
     // Firefox MV3 requires a stable add-on ID; the data-collection declaration is
     // "none" because Fluid Deck has zero telemetry (FF 2025 store requirement).
     ...(browser === "firefox"
