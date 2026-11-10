@@ -1,5 +1,6 @@
 import {
   ALARM_NAME,
+  BridgeTransport,
   PROTOCOL,
   PROTOCOL_VERSION,
   OutboxMachine,
@@ -8,25 +9,20 @@ import {
   effectiveDeadlineMs,
 } from "@fluid-deck/extension-core";
 import type { AlarmApi, OutboxEntry, OutboxRecord, OutboxStorage } from "@fluid-deck/extension-core";
+import { APP_URL_PATTERNS } from "../src/bridge-config.ts";
 
 /**
- * EXT-001 — durable outbox lifecycle (R-1).
+ * EXT-001 + EXT-004 — MV3 lifecycle and the production bridge transport.
  *
- * The queue itself lives in `OutboxMachine` (`@fluid-deck/extension-core`):
- * FIFO single-head delivery, 10 s ACK timeout, backoff min(1s·2^n, 60s),
- * permanent-nack drop only, and durable state that survives MV3 suspension.
- * This entrypoint owns only the browser wiring:
+ * The durable outbox is reconciled on every worker start; the transport turns
+ * the queue head into a `capture.deliver` envelope addressed to a live app tab.
+ * Attempts, ACK timeouts, backoff, FIFO and durable state all remain in
+ * `OutboxMachine`. The transport owns only the hop-1 registry and envelope
+ * direction — it is not a second queue and never schedules retries itself.
  *
- * - the `browser.storage.local` adapter (`fluid-deck:outbox`);
- * - boot / `onStartup` reconciliation, so a suspended or restarted worker
- *   reloads the queue and re-arms the durable alarm;
- * - the alarm adapter, which turns the head's effective deadline into a
- *   one-shot `browser.alarms` wake (the suspension/restart fallback).
- *
- * Delivery is injected. EXT-004 wires the real bridge transport here; until
- * then an attempt has no receiver and resolves `"timeout"`, so the record
- * stays durable and the R-1 backoff applies. Nothing is dropped, nothing is
- * delivered early, and there is exactly one queue.
+ * When no app tab is reachable the machine's attempt resolves `"timeout"`,
+ * the record stays durable, and the alarm wakes the worker again. Nothing is
+ * dropped and nothing is delivered early.
  */
 
 const STORAGE_KEY = OUTBOX_STORAGE_KEY;
@@ -40,6 +36,10 @@ const storageAdapter: OutboxStorage = {
     await browser.storage.local.set({ [STORAGE_KEY]: records });
   },
 };
+
+const transport = new BridgeTransport({
+  sendToTab: (tabId, message) => browser.tabs.sendMessage(tabId, message),
+});
 
 const alarmApi: AlarmApi = {
   create(name, whenSec) {
@@ -59,7 +59,7 @@ const scheduler = createAlarmAdapter(alarmApi);
 
 const outbox = new OutboxMachine({
   store: storageAdapter,
-  deliver: async () => "timeout",
+  deliver: (entry) => transport.deliver(entry),
   onSchedule: (deadlineMs) => {
     scheduler.scheduleAt(deadlineMs);
     // A zero deadline means the new head is ready *now* (pending, never
@@ -76,9 +76,26 @@ function reconcileAlarm() {
   scheduler.reconcile(effectiveDeadlineMs(outbox.queue()[0], Date.now()));
 }
 
+/**
+ * Worker restarts lose the in-memory ready registry but not the app tab or the
+ * relay's nonce. Querying app tabs restores delivery targets without a new
+ * handshake (a page that never ran the relay simply times out and retries).
+ */
+async function discoverAppTabs(): Promise<void> {
+  try {
+    const tabs = await browser.tabs.query({ url: APP_URL_PATTERNS });
+    for (const tab of tabs) {
+      if (tab.id !== undefined) transport.markCandidate(tab.id);
+    }
+  } catch (error) {
+    console.info("[Fluid Deck] bridge: app tab discovery skipped (%o)", error);
+  }
+}
+
 /** Reconcile durable state on boot, then attempt the head if anything is queued. */
 export async function reconcile(): Promise<void> {
   await outbox.restore();
+  await discoverAppTabs();
   const queue = outbox.queue();
   reconcileAlarm();
   if (queue.length > 0) {
@@ -90,16 +107,49 @@ export async function reconcile(): Promise<void> {
   }
 }
 
-export { outbox };
+export { outbox, transport };
 
 /** Alarm wake: reload durable state, rediscover tabs, and attempt the head. */
 export async function onAlarmWake(name: string): Promise<void> {
   if (name !== ALARM_NAME) return;
   await outbox.restore();
+  await discoverAppTabs();
   const queue = outbox.queue();
   reconcileAlarm();
   console.info(`[Fluid Deck] outbox alarm woke; ${queue.length} record(s) pending`);
   if (queue.length > 0) await outbox.tick();
+}
+
+/**
+ * Hop-2 → hop-1 routing. The relay already checked page origin, source and
+ * nonce; background re-validates the envelope (role, version, payload) before
+ * it can touch outbox state. `sender.tab.id` is browser-provided and cannot be
+ * spoofed by the page.
+ */
+function routeIncoming(message: unknown, sender: { tab?: { id?: number } }): void {
+  const tabId = sender.tab?.id;
+  if (tabId === undefined) return;
+  const type = (message as { type?: unknown } | null)?.type;
+
+  if (type === "capture.ready") {
+    if (transport.markReady(tabId, message)) void outbox.tick().catch(() => undefined);
+    return;
+  }
+
+  if (type === "capture.ack") {
+    const route = transport.routeAck(tabId, message);
+    if (!route) return;
+    // Always mirror the ack into the outbox: the transport may already have
+    // resolved the delivery promise, but a late ack must still clear the row.
+    void outbox.handleAck(route.captureId).catch(() => undefined);
+    return;
+  }
+
+  if (type === "capture.nack") {
+    const route = transport.routeNack(tabId, message);
+    if (!route?.permanent) return;
+    void outbox.handleNack(route.captureId, true).catch(() => undefined);
+  }
 }
 
 /**
@@ -109,6 +159,7 @@ export async function onAlarmWake(name: string): Promise<void> {
  */
 export interface FluidDeckTestApi {
   outbox: OutboxMachine;
+  transport: BridgeTransport;
   reconcile: () => Promise<void>;
   enqueue: (entry: OutboxEntry) => Promise<void>;
   tick: () => Promise<void>;
@@ -121,6 +172,7 @@ declare global {
 
 globalThis.__fluidDeck = {
   outbox,
+  transport,
   reconcile,
   enqueue: (entry) => outbox.enqueue(entry),
   tick: () => outbox.tick(),
@@ -139,4 +191,27 @@ export default defineBackground(() => {
   browser.alarms.onAlarm.addListener((alarm) => {
     void onAlarmWake(alarm.name);
   });
+  browser.runtime.onMessage.addListener((message, sender) => {
+    routeIncoming(message, sender);
+    return undefined;
+  });
+  browser.tabs.onRemoved.addListener((tabId) => {
+    transport.forgetTab(tabId);
+  });
+  // Navigation can invalidate a target without closing the tab. A fresh load
+  // re-runs the content script and announces `capture.ready` again.
+  browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    if (changeInfo.status !== "loading" && changeInfo.url === undefined) return;
+    const url = tab.url ?? "";
+    if (APP_URL_PATTERNS.some((pattern) => patternMatches(pattern, url))) {
+      transport.markCandidate(tabId);
+    } else {
+      transport.forgetTab(tabId);
+    }
+  });
 });
+
+/** Minimal `origin/*` matcher for the exact allowlist (no wildcard domains). */
+function patternMatches(pattern: string, url: string): boolean {
+  return pattern.endsWith("/*") ? url.startsWith(pattern.slice(0, -1)) : url === pattern;
+}

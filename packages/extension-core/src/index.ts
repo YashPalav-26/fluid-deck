@@ -99,6 +99,8 @@ export * from "./outbox.ts";
 export * from "./alarm-driver.ts";
 export * from "./metadata.ts";
 export * from "./thumbnail.ts";
+export * from "./bridge-transport.ts";
+export * from "./bridge-relay.ts";
 
 /** Maps EXT-002 metadata onto the frozen R-2 draft (validated at the boundary). */
 export function createCaptureDraft(input: {

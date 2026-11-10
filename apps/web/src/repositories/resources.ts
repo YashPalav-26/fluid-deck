@@ -18,6 +18,7 @@ import {
 import type { FluidDeckDatabase } from "../persistence/db.ts";
 import { parseOrThrow, parsePersisted, RepositoryError } from "./errors.ts";
 import { addResourceToCollection, addTagToResource } from "./relationships.ts";
+import { ensureTags } from "./tags.ts";
 
 export interface CreateResourceResult {
   resource: Resource;
@@ -25,9 +26,30 @@ export interface CreateResourceResult {
   duplicate: boolean;
 }
 
+export interface CreateResourceOptions {
+  /**
+   * EXT-004: capture ID becomes `resources.id`, making capture-ID idempotency
+   * possible on top of the canonical-URL unique index. Defaults to a new UUID.
+   */
+  id?: string;
+  /**
+   * EXT-004 bridge only: unknown collection/tag IDs are dropped instead of
+   * throwing (the web inbox must never create implicit collections, and one
+   * stale membership must not reject an otherwise valid capture).
+   */
+  dropMissingMembers?: boolean;
+}
+
+export interface CreateResourceMembers {
+  collectionIds?: readonly string[];
+  tagIds?: readonly string[];
+  /** Create-or-get tags by display name (normalized inside the same transaction). */
+  tagNames?: readonly string[];
+}
+
 type ValidatedResourceInput = z.output<typeof resourceInputSchema>;
 
-function buildResource(input: ValidatedResourceInput, id = crypto.randomUUID()): Resource {
+function buildResource(input: ValidatedResourceInput, id: string = crypto.randomUUID()): Resource {
   const canonicalUrl = canonicalizeUrl(input.url);
   const now = Date.now();
   return parseOrThrow(
@@ -49,23 +71,52 @@ function buildResource(input: ValidatedResourceInput, id = crypto.randomUUID()):
 /**
  * Creates a resource, or returns the existing one when its canonical URL is already
  * stored (including soft-deleted rows — IndexedDB's unique index covers those too).
+ *
+ * With an explicit `id` (EXT-004 capture ID), the ID is checked first so a
+ * capture ID can never be rebound to a different canonical URL — replaying a
+ * capture is idempotent; reusing its ID for copy-protection is a CONSTRAINT.
  */
 export async function createResource(
   database: FluidDeckDatabase,
   input: ResourceInput,
+  options: CreateResourceOptions = {},
 ): Promise<CreateResourceResult> {
   const valid = parseOrThrow(resourceInputSchema, input, "resource");
   const canonicalUrl = canonicalizeUrl(valid.url);
+  const id = options.id ?? crypto.randomUUID();
+
+  if (options.id !== undefined) {
+    const byId = await database.resources.get(id);
+    if (byId) {
+      if (byId.canonicalUrl !== canonicalUrl) {
+        throw new RepositoryError(
+          "CONSTRAINT",
+          `Capture ${id} was already created for a different URL`,
+        );
+      }
+      return { resource: byId, duplicate: true };
+    }
+  }
 
   const existing = await database.resources.where("canonicalUrl").equals(canonicalUrl).first();
   if (existing) return { resource: existing, duplicate: true };
 
-  const resource = buildResource(valid);
+  const resource = buildResource(valid, id);
   try {
     await database.resources.add(resource);
   } catch (error) {
-    const winner = await database.resources.where("canonicalUrl").equals(canonicalUrl).first();
-    if (winner) return { resource: winner, duplicate: true };
+    const winner =
+      (await database.resources.get(id)) ??
+      (await database.resources.where("canonicalUrl").equals(canonicalUrl).first());
+    if (winner) {
+      if (winner.id === id && winner.canonicalUrl !== canonicalUrl) {
+        throw new RepositoryError(
+          "CONSTRAINT",
+          `Capture ${id} was already created for a different URL`,
+        );
+      }
+      return { resource: winner, duplicate: true };
+    }
     throw error;
   }
   return { resource, duplicate: false };
@@ -78,7 +129,8 @@ export async function createResource(
 export async function createResourceWithMembers(
   database: FluidDeckDatabase,
   input: ResourceInput,
-  members: { collectionIds?: readonly string[]; tagIds?: readonly string[] } = {},
+  members: CreateResourceMembers = {},
+  options: CreateResourceOptions = {},
 ): Promise<CreateResourceResult> {
   return database.transaction(
     "rw",
@@ -90,13 +142,28 @@ export async function createResourceWithMembers(
       database.resourceTags,
     ],
     async () => {
-      const result = await createResource(database, input);
+      const result = await createResource(database, input, options);
       if (result.duplicate) return result;
 
-      for (const collectionId of members.collectionIds ?? []) {
+      const collectionIds = options.dropMissingMembers
+        ? (await database.collections.bulkGet([...(members.collectionIds ?? [])])).flatMap(
+            (collection) => (collection ? [collection.id] : []),
+          )
+        : (members.collectionIds ?? []);
+
+      const namedTags =
+        members.tagNames && members.tagNames.length > 0
+          ? await ensureTags(database, members.tagNames)
+          : [];
+      const tagIds = [...(members.tagIds ?? []), ...namedTags.map((tag) => tag.id)];
+      const resolvedTagIds = options.dropMissingMembers
+        ? (await database.tags.bulkGet(tagIds)).flatMap((tag) => (tag ? [tag.id] : []))
+        : tagIds;
+
+      for (const collectionId of collectionIds) {
         await addResourceToCollection(database, result.resource.id, collectionId);
       }
-      for (const tagId of members.tagIds ?? []) {
+      for (const tagId of resolvedTagIds) {
         await addTagToResource(database, result.resource.id, tagId);
       }
       const stored = await database.resources.get(result.resource.id);
