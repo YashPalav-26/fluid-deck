@@ -13,7 +13,7 @@ export default defineConfig({
     name: "Fluid Deck",
     description: "Capture and organize your internet resources. Local-first, zero telemetry.",
     version: "0.1.0",
-    permissions: ["storage", "activeTab", "scripting", "contextMenus"],
+    permissions: ["storage", "activeTab", "scripting", "contextMenus", "alarms"],
     host_permissions: ["<all_urls>"],
     // Firefox MV3 requires a stable add-on ID; the data-collection declaration is
     // "none" because Fluid Deck has zero telemetry (FF 2025 store requirement).
