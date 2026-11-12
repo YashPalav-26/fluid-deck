@@ -12,6 +12,7 @@ import { checkIntegrity } from "./persistence/integrity.ts";
 import type { IntegrityReport } from "./persistence/integrity.ts";
 import { startInbox } from "./bridge/inbox.ts";
 import { invalidateResourceQueries } from "./hooks/queries.ts";
+import { startSearch } from "./services/search.ts";
 import "./index.css";
 
 const rootElement = document.getElementById("root");
@@ -62,6 +63,11 @@ async function bootstrap(): Promise<void> {
       console.error("[Fluid Deck] capture bridge unavailable", error);
     }
     render(<App integrity={integrity} />);
+    // SEARCH-008: build the index in a lazy module worker after first paint,
+    // with a bounded main-thread fallback. Never blocks DB boot or browse.
+    void startSearch(db).catch((error) => {
+      console.error("[Fluid Deck] search index build failed", error);
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     render(
