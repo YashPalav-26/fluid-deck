@@ -226,6 +226,12 @@ export async function listTrashedResources(database: FluidDeckDatabase): Promise
   return result.sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0));
 }
 
+/** UI-004 Domain facet options: distinct domains of live resources, alphabetical. */
+export async function listDomains(database: FluidDeckDatabase): Promise<string[]> {
+  const keys = await database.resources.orderBy("domain").uniqueKeys();
+  return keys.filter((key): key is string => typeof key === "string").sort();
+}
+
 export async function updateResource(
   database: FluidDeckDatabase,
   id: string,
