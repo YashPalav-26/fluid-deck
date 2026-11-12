@@ -12,9 +12,11 @@ interface AppShellProps {
   sidebar: ReactNode;
   children: ReactNode;
   onOpenPalette?: () => void;
+  /** UI-004: persistent header search, rendered between the title and the actions. */
+  headerSearch?: ReactNode;
 }
 
-export function AppShell({ sidebar, children, onOpenPalette }: AppShellProps) {
+export function AppShell({ sidebar, children, onOpenPalette, headerSearch }: AppShellProps) {
   const { sidebarOpen, toggleSidebar, setSidebarOpen } = useShell();
   const { theme, toggleTheme } = useTheme();
 
@@ -37,9 +39,10 @@ export function AppShell({ sidebar, children, onOpenPalette }: AppShellProps) {
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between gap-4 border-b px-4 py-3 pl-12 md:pl-4 dark:border-slate-800">
-          <h1 className="text-lg font-semibold tracking-tight">{APP_NAME}</h1>
-          <div className="flex items-center gap-2">
+        <header className="flex items-center gap-4 border-b px-4 py-3 pl-12 md:pl-4 dark:border-slate-800">
+          <h1 className="shrink-0 text-lg font-semibold tracking-tight">{APP_NAME}</h1>
+          {headerSearch}
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             <button
               type="button"
               aria-label="⌘K — open command palette"
