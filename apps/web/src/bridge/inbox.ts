@@ -20,6 +20,7 @@ import { httpUrlSchema } from "@fluid-deck/core";
 import type { FluidDeckDatabase } from "../persistence/db.ts";
 import type { CreateResourceResult } from "../repositories/resources.ts";
 import { createResourceWithMembers } from "../repositories/resources.ts";
+import { syncResource } from "../services/search.ts";
 import { RepositoryError } from "../repositories/errors.ts";
 import {
   MAX_ENVELOPE_BYTES,
@@ -194,6 +195,7 @@ export function startInbox(options: InboxOptions): InboxHandle {
         ...(result.duplicate ? { duplicateOf: result.resource.id } : {}),
       });
       options.onCommitted?.(result);
+      void syncResource(options.database, result.resource);
     } catch (error) {
       // Never ack a failed write: the extension keeps the draft and retries.
       nack(captureId, classifyFailure(error));
