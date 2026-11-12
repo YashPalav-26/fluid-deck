@@ -6,7 +6,7 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: /import-export\.spec\.ts/,
+  testMatch: /import-(export|screens)\.spec\.ts/,
   timeout: 180_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,
