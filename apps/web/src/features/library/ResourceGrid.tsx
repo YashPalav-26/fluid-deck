@@ -17,6 +17,8 @@ interface ResourceGridProps {
   isError: boolean;
   trashed?: boolean;
   emptyTitle: string;
+  /** UI-004: search has no matches — the "save a page" hint would be wrong. */
+  emptyHint?: string;
   onTrash?: (id: string) => void;
   onRestore?: (id: string) => void;
   onOpen?: (id: string) => void;
@@ -29,6 +31,7 @@ export function ResourceGrid({
   isError,
   trashed = false,
   emptyTitle,
+  emptyHint,
   onTrash,
   onRestore,
   onOpen,
@@ -79,7 +82,7 @@ export function ResourceGrid({
       <div data-testid="grid-empty" className="rounded-lg border border-dashed p-10 text-center">
         <h2 className="text-lg font-medium">{emptyTitle}</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Save a page with the Fluid Deck extension, or import your bookmarks.
+          {emptyHint ?? "Save a page with the Fluid Deck extension, or import your bookmarks."}
         </p>
       </div>
     );
