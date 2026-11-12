@@ -11,6 +11,7 @@ import { createCollection, listSiblings } from "../repositories/collections.ts";
 import { createResource } from "../repositories/resources.ts";
 import { createTag } from "../repositories/tags.ts";
 import { useTestDatabase } from "../testing/database-fixture.ts";
+import { getSearchIndexState, rebuildSearchIndex, searchResources } from "../services/search.ts";
 import {
   commitImport,
   IMPORT_BATCH_SIZE,
@@ -600,5 +601,83 @@ describe("IMPORT-004: IMPORT-003 boundary", () => {
 
     const tag = await createTag(db, "reading");
     expect(tag.created).toBe(false);
+  });
+});
+
+describe("IMPORT-004: import-to-search synchronization", () => {
+  it("makes an imported resource searchable without a rebuild", async () => {
+    await rebuildSearchIndex(db);
+
+    await commitImport(
+      db,
+      makeImport([titled("https://search.example/one", "Zeppelin Release Notes")]),
+    );
+
+    const row = await db.resources
+      .where("canonicalUrl")
+      .equals("https://search.example/one")
+      .first();
+    const state = getSearchIndexState();
+    expect(state.status).toBe("ready");
+    expect(searchResources(state.index!, "zeppelin").map((r) => r.id)).toContain(row?.id);
+  });
+
+  it("never indexes a rolled-back batch", async () => {
+    await rebuildSearchIndex(db);
+
+    const committed = rows(500, "https://rollback-search.example/");
+    const broken = [
+      ...committed,
+      {
+        input: { url: "https://rollback-search.example/500", title: 123 },
+        meta: { collectionSourceIds: [], tags: [] },
+      } as unknown as ValidatedImportResource,
+    ];
+
+    await expect(commitImport(db, makeImport(broken))).rejects.toBeInstanceOf(ImportCommitError);
+    expect(await db.resources.count()).toBe(500);
+
+    const state = getSearchIndexState();
+    const indexed = searchResources(state.index!, "rollback-search");
+    // The committed batch is indexed...
+    expect(indexed).toHaveLength(500);
+    // ...and the row whose batch rolled back is not.
+    expect(indexed.some((r) => r.url.endsWith("/500"))).toBe(false);
+  });
+
+  it("re-indexes an updated resource under its new title", async () => {
+    await commitImport(db, makeImport([titled("https://update.example/one", "Original Heading")]));
+    await rebuildSearchIndex(db);
+
+    const resolutions = new Map<string, ImportConflictResolution>([
+      ["https://update.example/one", "update"],
+    ]);
+    await commitImport(db, makeImport([titled("https://update.example/one", "Renamed Heading")]), {
+      resolutions,
+    });
+
+    const row = await db.resources
+      .where("canonicalUrl")
+      .equals("https://update.example/one")
+      .first();
+    const state = getSearchIndexState();
+    expect(searchResources(state.index!, "renamed").map((r) => r.id)).toContain(row?.id);
+    expect(searchResources(state.index!, "original").map((r) => r.id)).not.toContain(row?.id);
+  });
+
+  it("syncs every committed batch of a multi-batch import", async () => {
+    await rebuildSearchIndex(db);
+
+    await commitImport(db, makeImport(rows(600, "https://multi.example/")));
+
+    const last = await db.resources
+      .where("canonicalUrl")
+      .equals("https://multi.example/599")
+      .first();
+    const state = getSearchIndexState();
+    // Both batches are in the index; the search result cap applies to hits,
+    // not to the indexed document count.
+    expect(state.index!.mini.documentCount).toBe(600);
+    expect(searchResources(state.index!, "599").map((r) => r.id)).toContain(last?.id);
   });
 });
