@@ -3,7 +3,7 @@
  * (FR-SRH-003, Phase 2.2 D3). There is no ViewState store.
  */
 import { z } from "zod";
-import { RESOURCE_SOURCES, RESOURCE_TYPES } from "./constants.ts";
+import { MAX_DOMAIN_LENGTH, RESOURCE_SOURCES, RESOURCE_TYPES } from "./constants.ts";
 import { uuidSchema } from "./schemas.ts";
 
 export const VIEW_SORT_OPTIONS = [
@@ -34,6 +34,10 @@ export const viewStateSchema = z.object({
   tags: z.array(z.string().trim().min(1).max(200)).default([]),
   date: dateRangeSchema.optional(),
   source: z.enum(RESOURCE_SOURCES).optional(),
+  /** UI-004: Domain facet. Additive + optional, so pre-UI-004 URLs still parse. */
+  domain: z.string().trim().min(1).max(MAX_DOMAIN_LENGTH).toLowerCase().optional(),
+  /** UI-004: Unorganized facet (resources with no collection membership). */
+  unorganized: z.boolean().default(false),
   hasCode: z.boolean().default(false),
   hasImage: z.boolean().default(false),
   sort: z.enum(VIEW_SORT_OPTIONS).default("newest"),
@@ -60,6 +64,8 @@ export function encodeViewState(state: ViewState): string {
   if (state.tags.length > 0) params.set("tags", state.tags.join(","));
   if (state.date) params.set("date", state.date);
   if (state.source) params.set("source", state.source);
+  if (state.domain) params.set("domain", state.domain);
+  if (state.unorganized) params.set("unorganized", "true");
   if (state.hasCode) params.set("has_code", "true");
   if (state.hasImage) params.set("has_image", "true");
   if (state.sort !== "newest") params.set("sort", state.sort);
@@ -80,6 +86,7 @@ export function decodeViewState(query: string): ViewState {
   const date = params.get("date");
   const dateParsed = date === null ? undefined : dateRangeSchema.safeParse(date).data;
   const collection = params.get("collection");
+  const domain = (params.get("domain") ?? "").trim().slice(0, MAX_DOMAIN_LENGTH).toLowerCase();
 
   return {
     q: (params.get("q") ?? "").slice(0, 500),
@@ -89,6 +96,8 @@ export function decodeViewState(query: string): ViewState {
     tags,
     date: dateParsed,
     source: readEnum(params, "source", RESOURCE_SOURCES),
+    domain: domain === "" ? undefined : domain,
+    unorganized: params.get("unorganized") === "true",
     hasCode: params.get("has_code") === "true",
     hasImage: params.get("has_image") === "true",
     sort: readEnum(params, "sort", VIEW_SORT_OPTIONS) ?? "newest",
