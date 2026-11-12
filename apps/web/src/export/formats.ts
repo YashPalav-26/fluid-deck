@@ -27,14 +27,15 @@ export interface FormatOptions {
 // --- HTML -------------------------------------------------------------------
 
 /**
- * Text nodes: only `<`/`>` need entities. `&` stays raw because the IMPORT-001
- * parser does not decode entities, so `&amp;` would come back as literal text.
+ * Text nodes: `<`, `>` and `&` are escaped. `&` must be escaped because the
+ * importer decodes entities exactly once (IMPORT-008), so `&amp;` round-trips
+ * to `&` while a raw `&` would be swallowed as the start of an entity.
  */
 function escapeHtmlText(value: string): string {
-  return value.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-/** Attribute values: also quote-safe. `&` stays raw for the same round-trip reason. */
+/** Attribute values: also quote-safe. */
 function escapeHtmlAttribute(value: string): string {
   return escapeHtmlText(value).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
