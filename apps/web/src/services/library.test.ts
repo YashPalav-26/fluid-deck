@@ -16,6 +16,7 @@ import {
   windowedResources,
   GRID_WINDOW_SIZE,
   RESOURCE_GRID_CAP,
+  viewDateBounds,
 } from "./library.ts";
 
 const fixture = useTestDatabase();
@@ -83,6 +84,39 @@ describe("getLibraryResources", () => {
     });
     expect(sorted.map((r) => r.title)).toEqual(["Apple", "Zebra"]);
     expect(RESOURCE_GRID_CAP).toBe(500);
+  });
+
+  // UI-004: browse path also honours the domain and unorganized facets.
+  it("filters by domain and by unorganized", async () => {
+    const { collection } = await createCollection(fixture.db, { name: "Reading", parentId: null });
+    const filed = await createResource(fixture.db, input("https://one.example.com/a", "Filed"));
+    const loose = await createResource(fixture.db, input("https://two.example.org/b", "Loose"));
+    await addResourceToCollection(fixture.db, filed.resource.id, collection.id);
+
+    const byDomain = await getLibraryResources(fixture.db, {
+      ...EMPTY_VIEW_STATE,
+      domain: "two.example.org",
+    });
+    expect(byDomain.map((r) => r.id)).toEqual([loose.resource.id]);
+
+    const unorganized = await getLibraryResources(fixture.db, {
+      ...EMPTY_VIEW_STATE,
+      unorganized: true,
+    });
+    expect(unorganized.map((r) => r.id)).toEqual([loose.resource.id]);
+  });
+});
+
+describe("viewDateBounds", () => {
+  it("maps presets to open-ended lower bounds and parses custom ranges", () => {
+    const week = viewDateBounds("week");
+    expect(week).not.toBeNull();
+    expect(week!.to).toBe(Number.POSITIVE_INFINITY);
+    expect(week!.from).toBeLessThanOrEqual(Date.now());
+    expect(week!.from).toBeGreaterThan(Date.now() - 8 * 24 * 60 * 60 * 1000);
+
+    expect(viewDateBounds("custom:1000:2000")).toEqual({ from: 1000, to: 2000 });
+    expect(viewDateBounds(undefined)).toBeNull();
   });
 });
 
