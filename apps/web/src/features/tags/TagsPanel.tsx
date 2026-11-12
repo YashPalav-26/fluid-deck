@@ -11,6 +11,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { db } from "../../persistence/db.ts";
 import { queryKeys, useTags } from "../../hooks/queries.ts";
 import { createTag, deleteTag, listTags, mergeTags, renameTag } from "../../repositories/tags.ts";
+import { listTaggedResources } from "../../repositories/relationships.ts";
+import { syncTagRename, syncTagMerge, syncResourcesBatch } from "../../services/search.ts";
 import { useToast } from "../../contexts/toast.tsx";
 import { FormDialog } from "../../features/dialogs/FormDialog.tsx";
 import { ConfirmDialog } from "../../features/dialogs/ConfirmDialog.tsx";
@@ -50,11 +52,13 @@ export function TagsPanel({
         await createTag(db, value.trim());
       } else if (dialog?.kind === "rename" && dialog.tag) {
         await renameTag(db, dialog.tag.id, value.trim());
+        void syncTagRename(db, dialog.tag.id);
         pushToast("Tag renamed");
       } else if (dialog?.kind === "merge" && dialog.tag) {
         const targetId = mergeTarget;
         if (!targetId) throw new Error("Choose a tag to merge into");
         const count = await mergeTags(db, dialog.tag.id, targetId);
+        void syncTagMerge(db, targetId);
         pushToast(`Merged ${count} resources`);
       }
       invalidate();
@@ -70,7 +74,12 @@ export function TagsPanel({
     if (!dialog?.tag) return;
     setIsPending(true);
     try {
+      const tagged = await listTaggedResources(db, dialog.tag.id);
       await deleteTag(db, dialog.tag.id);
+      void syncResourcesBatch(
+        db,
+        tagged.map((r) => r.id),
+      );
       invalidate();
       setDialog(null);
       pushToast("Tag deleted");
