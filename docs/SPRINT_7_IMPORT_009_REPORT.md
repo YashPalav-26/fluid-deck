@@ -100,6 +100,11 @@ Two clones of `origin/main` were made and installed with `pnpm install --frozen-
 | --- | --- | --- |
 | `clean-clone` | `c5b0675` | install OK; `pnpm build` **fails**: `normalizeCollectionName` not exported by `src/repositories/collections.ts` |
 | `clean-clone2` | `287c661` | install OK; `pnpm vitest run apps/web/src/import` **90/90 passed**; typecheck **5 errors**; `pnpm build` **fails** |
+| `cleanfix2` | `96de082` | install OK; typecheck **green**; `pnpm test` **46 files / 412 passed**; `pnpm build` **green** (entry 719.32 kB raw / 225.40 kB gzip) |
+
+The third row is the follow-up repository-integrity task that resolved this condition: the
+`viewDateBounds` / `domain` / `unorganized` seam was committed (`b710f8f`, `38a047e`, `c7bb069`,
+`7df7528`) and the two `export/json.test.ts` type errors were fixed (`96de082`).
 
 Remaining errors at `287c661` (all pre-existing, all caused by *uncommitted* Sprint 6 work):
 
@@ -233,12 +238,13 @@ The E2E spec and the Playwright config never enter the app bundle.
 
 ## 7. Limitations and conditions
 
-1. **Clean-clone build is still red.** `origin/main` cannot build the web app because
-   `src/export/source.ts` imports `viewDateBounds` from the uncommitted Sprint 6
-   `services/library.ts`. The import pipeline itself is clean (90/90 in the clean clone), but the
-   "clean-clone-equivalent build" gate stays red until the Sprint 6 view-state work is
-   committed. Committing it here would mean committing another task's work, which the brief
-   forbids.
+1. **Clean-clone build: was red, now green.** At the time of this report `origin/main` could
+   not build the web app because `src/export/source.ts` imports `viewDateBounds` from the
+   uncommitted Sprint 6 `services/library.ts`. A follow-up repository-integrity task committed
+   the seam (`b710f8f`, `38a047e`, `c7bb069`, `7df7528`) and fixed the two
+   `export/json.test.ts` type errors (`96de082`); a fresh clone of `96de082` installs,
+   typechecks, tests (412 passed) and builds cleanly. The Sprint 6 *search* work is still
+   uncommitted and is not needed for the build.
 2. **Oversized files** are rejected by `validate.ts` (unit-covered) but no browser test
    uploads a >20 MB file.
 3. **No screen-reader or zoom evidence.** Accessibility is claimed at the markup/label/focus
@@ -272,9 +278,10 @@ The E2E spec and the Playwright config never enter the app bundle.
 
 - IMPORT-001..009 are implemented, verified and (for 001-008) committed; IMPORT-009's files are
   committed in this checkpoint.
-- The clean-clone-equivalent build gate is **red** for reasons that belong to Sprint 6, not to
-  M8's code. That is the one condition that a reviewer should act on before calling M8 closed:
-  commit the Sprint 6 `viewDateBounds` / `domain` / `unorganized` work, then re-run
-  `pnpm --filter @fluid-deck/web typecheck` and `pnpm build` on a fresh clone.
+- The clean-clone-equivalent build gate was **red** here for reasons that belong to Sprint 6,
+  not to M8's code. A follow-up repository-integrity task closed it: the `viewDateBounds` /
+  `domain` / `unorganized` seam and the two `export/json.test.ts` type errors were committed
+  (`b710f8f`, `38a047e`, `c7bb069`, `7df7528`, `96de082`), and a fresh clone of `96de082`
+  installs, typechecks, tests (412 passed) and builds cleanly.
 - The other conditions (no screen-reader/zoom evidence, oversized-file path unit-covered only,
   format fidelity losses documented in IMPORT-008) are known and tracked, not blockers.
