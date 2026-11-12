@@ -28,6 +28,7 @@ import {
 } from "../repositories/collections.ts";
 import { addResourceToCollection } from "../repositories/relationships.ts";
 import { createResourceWithMembers, updateResource } from "../repositories/resources.ts";
+import { syncResourcesBatch } from "../services/search.ts";
 import type { ImportConflictResolution, ImportResolutionMap } from "./preview.ts";
 import type { ValidatedImport, ValidatedImportCollection } from "./validate.ts";
 
@@ -437,6 +438,8 @@ async function commitBatch(
   duplicates: number;
   updated: number;
   addedToCollections: number;
+  /** Rows this batch changed; the search index is synced from exactly these. */
+  touched: string[];
 }> {
   return database.transaction(
     "rw",
@@ -452,6 +455,7 @@ async function commitBatch(
       let duplicates = 0;
       let updated = 0;
       let addedToCollections = 0;
+      const touched: string[] = [];
 
       for (const { input, meta } of batch) {
         const memberships = meta.collectionSourceIds.flatMap((sourceId) => {
@@ -468,6 +472,7 @@ async function commitBatch(
 
         if (!result.duplicate) {
           created += 1;
+          touched.push(result.resource.id);
           if (usableTimestamp(meta.createdAt)) {
             await database.resources.update(result.resource.id, { createdAt: meta.createdAt });
           }
@@ -482,6 +487,7 @@ async function commitBatch(
           if (Object.keys(patch).length > 0) {
             await updateResource(database, result.resource.id, patch);
             updated += 1;
+            touched.push(result.resource.id);
           }
           continue;
         }
@@ -491,10 +497,12 @@ async function commitBatch(
             await addResourceToCollection(database, result.resource.id, collectionId);
           }
           addedToCollections += 1;
+          // Membership text is searchable, so the row must be re-indexed.
+          touched.push(result.resource.id);
         }
         // "skip": existing row and its relationships stay untouched.
       }
-      return { created, duplicates, updated, addedToCollections };
+      return { created, duplicates, updated, addedToCollections, touched };
     },
   );
 }
@@ -557,6 +565,8 @@ export async function commitImport(
         duplicates: number;
         updated: number;
         addedToCollections: number;
+        /** Rows this batch changed; the search index is synced from exactly these. */
+        touched: string[];
       };
       try {
         outcome = await commitBatch(database, batch, collections.ids, resolve);
@@ -580,6 +590,18 @@ export async function commitImport(
 
       // Checkpoint after the transaction, never before it.
       persist(index, index >= total);
+
+      // The search index is derived state: sync exactly the rows this batch
+      // committed, and only after the transaction resolved. A rolled-back batch
+      // throws above and never reaches this line.
+      if (outcome.touched.length > 0) {
+        try {
+          await syncResourcesBatch(database, outcome.touched);
+        } catch {
+          // The index is disposable and rebuilt on the next startup; a sync
+          // failure must not fail an import whose rows are already committed.
+        }
+      }
 
       options.onProgress?.({
         fingerprint,
