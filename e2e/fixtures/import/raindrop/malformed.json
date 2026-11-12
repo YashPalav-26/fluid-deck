@@ -1,0 +1,41 @@
+{
+  "result": true,
+  "items": [
+    {
+      "_id": 1,
+      "link": "https://valid.example.com/first",
+      "title": "Valid item",
+      "excerpt": "Kept.",
+      "note": "A note.",
+      "type": "article",
+      "created": "2024-02-01T10:00:00.000Z",
+      "tags": ["good", { "tag": "nested" }],
+      "collection": { "$id": 1 }
+    },
+    { "_id": 2, "link": null, "title": "Null link" },
+    { "_id": 3, "link": "not a url", "title": "Invalid URL" },
+    { "_id": 4, "link": "https://no-title.example.com/" },
+    {
+      "_id": 5,
+      "link": "https://wrong-types.example.com/",
+      "title": 42,
+      "tags": "not-an-array",
+      "created": true,
+      "cover": 7
+    },
+    { "_id": 6, "link": "https://duplicate.example.com/page", "title": "First copy" },
+    {
+      "_id": 7,
+      "link": "https://duplicate.example.com/page?utm_source=newsletter&utm_medium=email",
+      "title": "Duplicate with tracking",
+      "collectionId": "1"
+    },
+    "not-an-object"
+  ],
+  "collections": [
+    { "_id": 1, "title": "Kept collection", "parent": null, "sort": 0 },
+    { "title": "Missing id" },
+    { "_id": 2 }
+  ],
+  "tags": [{ "tag": "good", "count": 2 }, { "tag": 5 }, "plain-tag"]
+}
