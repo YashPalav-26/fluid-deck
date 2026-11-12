@@ -1,20 +1,31 @@
 /**
- * IMPORT-006 - export dialog.
+ * IMPORT-006/007 - export dialog.
  *
- * Two scopes reachable from Settings: the whole library, or one collection. The
- * `selected` and `filter` scopes already exist in `export/json.ts`; they need the
- * library chrome (IMPORT-009) to know what is selected.
+ * Scopes reachable from Settings: the whole library or one collection. `selected`
+ * and `filter` exist in the export service; they need the library chrome
+ * (IMPORT-009) to know what is selected. HTML/Markdown/CSV builders load lazily so
+ * the entry chunk carries only the JSON path.
  */
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { db as defaultDatabase } from "../../persistence/db.ts";
 import type { FluidDeckDatabase } from "../../persistence/db.ts";
 import { useToast } from "../../contexts/toast.tsx";
-import { exportJson, downloadExport } from "../../export/json.ts";
+import { exportJson } from "../../export/json.ts";
+import { downloadExport } from "../../export/source.ts";
+import type { ExportFile } from "../../export/source.ts";
 import { listCollections } from "../../repositories/collections.ts";
 import { DialogShell } from "../dialogs/DialogShell.tsx";
 
 type ScopeKind = "all" | "collection";
+type Format = "json" | "html" | "markdown" | "csv";
+
+const FORMATS: Array<{ value: Format; label: string }> = [
+  { value: "json", label: "JSON (full fidelity)" },
+  { value: "html", label: "HTML bookmarks" },
+  { value: "markdown", label: "Markdown" },
+  { value: "csv", label: "CSV" },
+];
 
 interface ExportDialogProps {
   open: boolean;
@@ -30,6 +41,9 @@ export function ExportDialog({
 }: ExportDialogProps) {
   const { pushToast } = useToast();
   const [kind, setKind] = useState<ScopeKind>("all");
+  const [format, setFormat] = useState<Format>("json");
+  const [includeThumbnails, setIncludeThumbnails] = useState(false);
+  const [includeNotes, setIncludeNotes] = useState(true);
   const [collectionId, setCollectionId] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -41,14 +55,27 @@ export function ExportDialog({
 
   const run = useMutation({
     mutationFn: async () => {
-      const exported =
+      const scope =
         kind === "all"
-          ? await exportJson(database, { kind: "all" })
-          : await exportJson(database, { kind: "collection", collectionId });
-      downloadExport(exported);
-      return exported.meta;
+          ? ({ kind: "all" } as const)
+          : ({ kind: "collection", collectionId } as const);
+      let file: ExportFile;
+      if (format === "json") {
+        file = await exportJson(database, scope);
+      } else {
+        const { exportHtml, exportMarkdown, exportCsv } = await import("../../export/formats.ts");
+        const options = { includeThumbnails, includeNotes };
+        file =
+          format === "html"
+            ? await exportHtml(database, scope, options)
+            : format === "markdown"
+              ? await exportMarkdown(database, scope, options)
+              : await exportCsv(database, scope, options);
+      }
+      downloadExport(file);
+      return { ...file.meta, format };
     },
-    onSuccess: (meta) => pushToast(`Exported ${meta.resourceCount} resources`),
+    onSuccess: (meta) => pushToast(`Exported ${meta.resourceCount} resources as ${meta.format}`),
     onError: (cause) => setError(cause instanceof Error ? cause.message : "Export failed"),
   });
 
@@ -57,6 +84,9 @@ export function ExportDialog({
     onOpenChange(nextOpen);
     if (!nextOpen) {
       setKind("all");
+      setFormat("json");
+      setIncludeThumbnails(false);
+      setIncludeNotes(true);
       setCollectionId("");
       setError(null);
     }
@@ -67,7 +97,7 @@ export function ExportDialog({
       open={open}
       onOpenChange={handleOpenChange}
       title="Export library"
-      description="Download a JSON file. Trashed items are never included."
+      description="Download the library as JSON, HTML bookmarks, Markdown or CSV. Trashed items are never included."
     >
       <div className="space-y-4">
         <fieldset className="space-y-2">
@@ -114,6 +144,42 @@ export function ExportDialog({
           </label>
         ) : null}
 
+        <label className="block text-sm">
+          <span>Format</span>
+          <select
+            aria-label="Format"
+            value={format}
+            onChange={(event) => setFormat(event.target.value as Format)}
+            className="mt-1 block w-full rounded-md border px-3 py-1.5 text-sm"
+          >
+            {FORMATS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="space-y-2 text-sm">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={includeThumbnails}
+              onChange={(event) => setIncludeThumbnails(event.target.checked)}
+            />
+            Include thumbnails
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={includeNotes}
+              disabled={format !== "markdown"}
+              onChange={(event) => setIncludeNotes(event.target.checked)}
+            />
+            Include notes (Markdown only)
+          </label>
+        </div>
+
         <div className="flex justify-end gap-2">
           <button
             type="button"
@@ -129,7 +195,7 @@ export function ExportDialog({
             onClick={() => run.mutate()}
             disabled={run.isPending || (kind === "collection" && collectionId === "")}
           >
-            {run.isPending ? "Exporting." : "Export JSON"}
+            {run.isPending ? "Exporting." : "Export file"}
           </button>
         </div>
 
