@@ -15,7 +15,7 @@ export function normalizeTagName(name: string): string {
   return name.normalize("NFC").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-function displayTagName(name: string): string {
+export function displayTagName(name: string): string {
   return name.normalize("NFC").trim().replace(/\s+/g, " ");
 }
 
