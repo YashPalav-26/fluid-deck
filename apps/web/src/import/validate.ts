@@ -110,7 +110,8 @@ const BOOKMARK_HTML_TAGS = ["a", "p", "h1", "h3", "dl", "dt", "dd", "title"];
 export function sanitizeBookmarkHtml(html: string): string {
   return DOMPurify.sanitize(html, {
     ALLOWED_TAGS: BOOKMARK_HTML_TAGS,
-    ALLOWED_ATTR: ["href", "rel"],
+    // `tags` is the Netscape TAGS attribute our own export writes.
+    ALLOWED_ATTR: ["href", "rel", "tags"],
   });
 }
 
@@ -391,7 +392,10 @@ export function validateHtmlImport(html: string): ValidatedImport {
         extractionStatus: "complete",
         extractionNotes: [],
       },
-      { collectionSourceIds: resource.folderId === null ? [] : [resource.folderId], tags: [] },
+      {
+        collectionSourceIds: resource.folderId === null ? [] : [resource.folderId],
+        tags: resource.tags,
+      },
     );
   });
 
@@ -413,6 +417,56 @@ export function validateHtmlImport(html: string): ValidatedImport {
     ),
     warnings,
   };
+}
+
+/**
+ * Our JSON export writes two fields the Raindrop parser ignores: `collectionIds`
+ * (every membership, not just the mirrored `collection`) and `faviconUrl`.
+ * `shortcut: merged here because raindrop.ts is outside this task's committable
+ * files; move these two reads into the parser once that file is tracked.`
+ */
+interface PayloadExtras {
+  collectionIds: string[];
+  faviconUrl?: string;
+}
+
+function canonicalKey(value: string): string | null {
+  try {
+    return canonicalizeUrl(value.trim());
+  } catch {
+    return null;
+  }
+}
+
+function readPayloadExtras(payload: unknown): Map<string, PayloadExtras> {
+  const items = Array.isArray(payload)
+    ? payload
+    : payload &&
+        typeof payload === "object" &&
+        Array.isArray((payload as Record<string, unknown>)["items"])
+      ? ((payload as Record<string, unknown>)["items"] as unknown[])
+      : [];
+  const extras = new Map<string, PayloadExtras>();
+  for (const raw of items) {
+    if (!raw || typeof raw !== "object") continue;
+    const record = raw as Record<string, unknown>;
+    const link = typeof record["link"] === "string" ? record["link"] : record["url"];
+    if (typeof link !== "string") continue;
+    const key = canonicalKey(link);
+    if (key === null) continue;
+    const ids = Array.isArray(record["collectionIds"])
+      ? record["collectionIds"].filter(
+          (value): value is string => typeof value === "string" && value.trim() !== "",
+        )
+      : [];
+    const faviconUrl = typeof record["faviconUrl"] === "string" ? record["faviconUrl"].trim() : "";
+    const usableFavicon = canonicalKey(faviconUrl) !== null ? faviconUrl : undefined;
+    extras.set(key, {
+      collectionIds: [...new Set(ids.map((value) => value.trim()))],
+      ...(usableFavicon === undefined ? {} : { faviconUrl: usableFavicon }),
+    });
+  }
+  return extras;
 }
 
 /** Validates a Raindrop.io JSON export. */
@@ -452,8 +506,18 @@ export function validateRaindropImport(json: string): ValidatedImport {
 
   const resources: ValidatedImportResource[] = [];
   const seen = new Set<string>();
+  const extras = readPayloadExtras(payload);
   parsed.resources.forEach((resource, index) => {
-    addResource(resources, seen, warnings, index, rainDropInput(resource), rainDropMeta(resource));
+    const input = rainDropInput(resource);
+    const extra = extras.get(canonicalKey(resource.url) ?? "");
+    if (extra?.faviconUrl) input.faviconUrl = extra.faviconUrl;
+    addResource(resources, seen, warnings, index, input, {
+      ...rainDropMeta(resource),
+      collectionSourceIds:
+        extra && extra.collectionIds.length > 0
+          ? extra.collectionIds
+          : resource.collectionSourceIds,
+    });
   });
 
   return {
