@@ -151,7 +151,7 @@ describe("IMPORT-006: JSON export", () => {
       "Tools",
     ]);
     expect(
-      data["collections"].find((collection) => collection._id === tools.collection.id).parent,
+      data["collections"].find((collection) => collection._id === tools.collection.id)?.parent,
     ).toEqual({ $id: dev.collection.id });
     expect(data["tags"]).toEqual([{ _id: reading.tag.id, tag: "reading", count: 1 }]);
     expect(beta.resource.id).toBeTruthy();
@@ -207,7 +207,7 @@ describe("IMPORT-006: JSON export", () => {
     expect(exported.meta.resourceCount).toBe(EXPORT_CHUNK_SIZE * 2 + 1);
     expect(data["items"]).toHaveLength(EXPORT_CHUNK_SIZE * 2 + 1);
     // Chunk boundaries are stitched into one valid array.
-    expect(data["items"][EXPORT_CHUNK_SIZE].title).toBe(`Item ${EXPORT_CHUNK_SIZE}`);
+    expect(data["items"][EXPORT_CHUNK_SIZE]?.title).toBe(`Item ${EXPORT_CHUNK_SIZE}`);
   });
 
   it("round-trips through the Raindrop validator", async () => {
