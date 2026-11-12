@@ -21,7 +21,7 @@ describe("ViewState URL codec (DB-008)", () => {
       unorganized: true,
       hasCode: true,
       hasImage: true,
-      sort: "title-asc" as const,
+      sort: "relevance" as const,
     };
     const encoded = encodeViewState(state);
     expect(decodeViewState(encoded)).toEqual(state);
