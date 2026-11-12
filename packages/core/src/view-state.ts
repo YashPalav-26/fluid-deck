@@ -13,6 +13,8 @@ export const VIEW_SORT_OPTIONS = [
   "title-desc",
   "most-tagged",
   "recently-opened",
+  /** UI-004: search-result ranking. Meaningless without a query; browse falls back to newest. */
+  "relevance",
 ] as const;
 export type ViewSort = (typeof VIEW_SORT_OPTIONS)[number];
 
