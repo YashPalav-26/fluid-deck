@@ -113,7 +113,95 @@ describe("ImportDialog", () => {
     upload("{ not json");
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Re-run" }));
     expect(screen.getByLabelText("Bookmark file")).toBeInTheDocument();
     expect(await database.resources.count()).toBe(0);
+  });
+
+  it("reports per-batch progress while committing more than one batch", async () => {
+    const database = fixture.db;
+    const items = Array.from({ length: 600 }, (_, index) => ({
+      _id: index,
+      link: `https://batch.example/${index}`,
+      title: `Batch ${index}`,
+    }));
+    renderDialog(database);
+
+    upload(JSON.stringify({ result: true, collections: [], items }));
+
+    await waitFor(() => expect(count("New resources")).toBe("600"));
+    fireEvent.click(screen.getByRole("button", { name: "Import now" }));
+
+    // 600 rows is two IMPORT_BATCH_SIZE=500 batches, so progress must be reported.
+    // The batch line only appears once the first real transaction resolves; under a
+    // loaded full-suite run that is slower than the 1s Testing Library default.
+    expect(await screen.findByRole("progressbar", { name: "Import progress" })).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Batch \d+: \d+ of 600 resources/, undefined, { timeout: 20_000 }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Imported 600 new resources/, undefined, { timeout: 20_000 }),
+    ).toBeInTheDocument();
+    expect(await database.resources.count()).toBe(600);
+  }, 30_000);
+
+  it("shows an error summary that can be dismissed or re-run", async () => {
+    const database = fixture.db;
+    const onOpenChange = vi.fn();
+    renderDialog(database, onOpenChange);
+
+    upload("{ not json");
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("This file could not be imported");
+    expect(alert).toHaveTextContent("not valid JSON");
+    expect(alert).toHaveTextContent("File corrupted. Re-export from source.");
+    expect(screen.queryByLabelText("Bookmark file")).not.toBeInTheDocument();
+
+    // Re-run returns to the picker without closing the dialog or writing anything.
+    fireEvent.click(screen.getByRole("button", { name: "Re-run" }));
+    expect(screen.getByLabelText("Bookmark file")).toBeInTheDocument();
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(await database.resources.count()).toBe(0);
+
+    upload("{ not json");
+    fireEvent.click(await screen.findByRole("button", { name: "Dismiss" }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(await database.resources.count()).toBe(0);
+  });
+
+  it("lists validation warnings in the preview instead of dropping them silently", async () => {
+    const database = fixture.db;
+    renderDialog(database);
+
+    upload(
+      JSON.stringify({
+        result: true,
+        collections: [],
+        items: [
+          { _id: 1, link: "https://warn.example/kept", title: "Kept" },
+          { _id: 2, link: null, title: "Broken" },
+        ],
+      }),
+    );
+
+    await waitFor(() => expect(count("New resources")).toBe("1"));
+    expect(screen.getByText(/skipped or adjusted during validation/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/skipped or adjusted during validation/));
+    expect(screen.getByText(/resource #2: /)).toBeInTheDocument();
+  });
+
+  it("returns to the picker from the summary without writing again", async () => {
+    const database = fixture.db;
+    renderDialog(database);
+
+    upload(IMPORT_JSON);
+    await waitFor(() => expect(count("New resources")).toBe("2"));
+    fireEvent.click(screen.getByRole("button", { name: "Import now" }));
+    expect(await screen.findByText(/Imported 2 new resources/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Import another file" }));
+    expect(screen.getByLabelText("Bookmark file")).toBeInTheDocument();
+    expect(await database.resources.count()).toBe(2);
   });
 });
