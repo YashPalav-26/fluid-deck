@@ -26,17 +26,26 @@ export function nextWindowSize(visibleCount: number): number {
   return Math.min(visibleCount + GRID_WINDOW_SIZE, RESOURCE_GRID_CAP);
 }
 
-function matchesDate(resource: Resource, date: ViewState["date"]): boolean {
-  if (!date) return true;
-  let start = 0;
-  if (date === "week") start = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  else if (date === "month") start = Date.now() - 30 * 24 * 60 * 60 * 1000;
-  else if (date === "year") start = Date.now() - 365 * 24 * 60 * 60 * 1000;
-  else {
+/**
+ * ViewState date preset / custom range -> epoch bounds. Shared with the
+ * search service so browse and search cannot disagree on what "this week" means.
+ * Presets are open-ended above (original browse behaviour).
+ */
+export function viewDateBounds(date: ViewState["date"]): { from: number; to: number } | null {
+  if (!date) return null;
+  if (date.startsWith("custom:")) {
     const [, from, to] = date.split(":");
-    return resource.createdAt >= Number(from) && resource.createdAt <= Number(to);
+    return { from: Number(from), to: Number(to) };
   }
-  return resource.createdAt >= start;
+  const day = 24 * 60 * 60 * 1000;
+  const days = date === "week" ? 7 : date === "month" ? 30 : 365;
+  return { from: Date.now() - days * day, to: Number.POSITIVE_INFINITY };
+}
+
+function matchesDate(resource: Resource, date: ViewState["date"]): boolean {
+  const bounds = viewDateBounds(date);
+  if (!bounds) return true;
+  return resource.createdAt >= bounds.from && resource.createdAt <= bounds.to;
 }
 
 function sortResources(resources: Resource[], sort: ViewState["sort"]): Resource[] {
@@ -75,6 +84,14 @@ export async function getLibraryResources(
   if (view.type) resources = resources.filter((r) => r.type === view.type);
   if (view.source) resources = resources.filter((r) => r.source === view.source);
   if (view.date) resources = resources.filter((r) => matchesDate(r, view.date));
+  if (view.domain) resources = resources.filter((r) => r.domain === view.domain);
+
+  if (view.unorganized) {
+    const organized = new Set(
+      (await database.resourceCollections.toArray()).map((join) => join.resourceId),
+    );
+    resources = resources.filter((r) => !organized.has(r.id));
+  }
 
   if (view.collection) {
     const memberIds = new Set(
