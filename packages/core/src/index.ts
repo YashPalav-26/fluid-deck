@@ -8,3 +8,4 @@ export * from "./url.ts";
 export * from "./ordering.ts";
 export * from "./view-state.ts";
 export * from "./preferences.ts";
+export * from "./tokenizer.ts";
