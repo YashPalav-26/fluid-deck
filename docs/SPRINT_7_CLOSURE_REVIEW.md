@@ -7,10 +7,11 @@
 **M8: PASS WITH CONDITIONS. M8 is CLOSED for planning purposes; the conditions below carry into M9 hardening.**
 
 All nine IMPORT tasks are implemented, committed and verified against a clean clone of
-`origin/main`. The final `origin/main` HEAD `97ccdb1` installs with a frozen lockfile,
-typechecks in all five workspaces, runs 412 unit tests green, builds for web + both extension
-targets, and runs the browser suites green: **22/22 in the default Playwright config** and
-**27/27 in the dedicated Chromium/Firefox/Edge import-export config**.
+`origin/main` at `97ccdb1` (this audit itself adds two documentation-only commits on top of that
+HEAD - no code, test or config change). That HEAD installs with a frozen lockfile, typechecks in
+all five workspaces, runs 412 unit tests green, builds for web + both extension targets, and runs
+the browser suites green: **22/22 in the default Playwright config** and **27/27 in the dedicated
+Chromium/Firefox/Edge import-export config**.
 
 Two things prevent an unconditional PASS and are stated plainly here rather than buried:
 
