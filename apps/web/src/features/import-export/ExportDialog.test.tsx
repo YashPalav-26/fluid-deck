@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 /**
- * IMPORT-006 acceptance: the dialog exports real database rows through the service,
- * triggers a named download, and keeps the blob URL alive long enough to save.
+ * IMPORT-006/007 acceptance: the dialog exports real database rows through the
+ * service, triggers a named download, and keeps the blob URL alive long enough to
+ * save. HTML/Markdown/CSV load lazily and keep their own filenames/types.
  */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
@@ -13,7 +14,7 @@ import { addResourceToCollection } from "../../repositories/relationships.ts";
 import { createResource } from "../../repositories/resources.ts";
 import { useTestDatabase } from "../../testing/database-fixture.ts";
 import { ToastProvider } from "../../contexts/toast.tsx";
-import { EXPORT_REVOKE_DELAY_MS } from "../../export/json.ts";
+import { EXPORT_REVOKE_DELAY_MS } from "../../export/source.ts";
 import { ExportDialog } from "./ExportDialog.tsx";
 
 const fixture = useTestDatabase();
@@ -57,10 +58,13 @@ function renderDialog(database: FluidDeckDatabase) {
   );
 }
 
-async function lastExport() {
+async function lastBlob() {
   await waitFor(() => expect(blobs.size).toBe(1));
-  const blob = [...blobs.values()][0]!;
-  return JSON.parse(await blob.text()) as {
+  return [...blobs.values()][0]!;
+}
+
+async function lastExport() {
+  return JSON.parse(await (await lastBlob()).text()) as {
     items: Array<{ link: string }>;
     resourceCount: number;
     truncated: boolean;
@@ -75,7 +79,7 @@ describe("ExportDialog", () => {
     const timeout = vi.spyOn(globalThis, "setTimeout");
     renderDialog(database);
 
-    fireEvent.click(screen.getByRole("button", { name: "Export JSON" }));
+    fireEvent.click(screen.getByRole("button", { name: "Export file" }));
 
     const data = await lastExport();
     expect(data.resourceCount).toBe(2);
@@ -98,7 +102,7 @@ describe("ExportDialog", () => {
     renderDialog(database);
 
     fireEvent.click(screen.getByRole("radio", { name: "One collection" }));
-    const button = screen.getByRole("button", { name: "Export JSON" });
+    const button = screen.getByRole("button", { name: "Export file" });
     expect(button).toBeDisabled();
 
     await waitFor(() =>
@@ -114,5 +118,32 @@ describe("ExportDialog", () => {
     expect(data.resourceCount).toBe(1);
     expect(data.truncated).toBe(true);
     expect(data.items[0]?.link).toBe("https://dialog.example/inside");
+  });
+
+  it("exports Markdown lazily with its own filename and options", async () => {
+    const database = fixture.db;
+    await createResource(database, {
+      url: "https://dialog.example/md",
+      title: "Markdown one",
+      thumbnailUrl: "https://cdn.example/md.png",
+    });
+    renderDialog(database);
+
+    const notes = screen.getByRole("checkbox", { name: "Include notes (Markdown only)" });
+    expect(notes).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Format"), { target: { value: "markdown" } });
+    expect(notes).toBeEnabled();
+    expect(screen.getByRole("checkbox", { name: "Include thumbnails" })).not.toBeChecked();
+
+    fireEvent.click(screen.getByRole("button", { name: "Export file" }));
+
+    const blob = await lastBlob();
+    expect(blob.type).toBe("text/markdown;charset=utf-8");
+    expect(downloadName).toMatch(/^fluid-deck-export-\d{4}-\d{2}-\d{2}\.md$/);
+    const text = await blob.text();
+    expect(text).toContain('title: "Markdown one"');
+    expect(text).toContain("## Markdown one");
+    // Thumbnails are opt-in, so the default export stays small.
+    expect(text).not.toContain("thumbnailUrl:");
   });
 });
