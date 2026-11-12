@@ -22,7 +22,7 @@ import {
 import type { FluidDeckDatabase } from "../persistence/db.ts";
 import { parseOrThrow, RepositoryError } from "./errors.ts";
 
-function normalizeCollectionName(name: string): string {
+export function normalizeCollectionName(name: string): string {
   return name.normalize("NFC").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
