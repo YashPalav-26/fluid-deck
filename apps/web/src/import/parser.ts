@@ -16,14 +16,46 @@
 
 // ---- Netscape token scan ----
 // Order matters: <dl> and <dt> are matched before the generic text patterns.
+// <DD> ends at the next structural tag (browsers auto-close it there).
 const TOKEN_RE =
-  /<dl\b[^>]*>|<\/dl\s*>|<dt\b[^>]*>|<h3\b[^>]*>([\s\S]*?)<\/h3\s*>|<a\b([^>]*)>([\s\S]*?)<\/a\s*>|<p\b[^>]*>([\s\S]*?)<\/p\s*>/gi;
+  /<dl\b[^>]*>|<\/dl\s*>|<dt\b[^>]*>|<h3\b[^>]*>([\s\S]*?)<\/h3\s*>|<a\b([^>]*)>([\s\S]*?)<\/a\s*>|<p\b[^>]*>([\s\S]*?)<\/p\s*>|<dd\b[^>]*>([\s\S]*?)(?=<\s*\/?\s*(?:dt|dl|dd)\b|$)/gi;
 
 const HREF_RE = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"'][^\s>]*))/i;
 const REL_RE = /\brel\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"'][^\s>]*))/i;
+const TAGS_RE = /\btags\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"'][^\s>]*))/i;
+
+/**
+ * One pass, no recursion: `&amp;amp;` decodes to `&amp;`, never to `&`.
+ * Mirrors what the browser already did to the document, so the parser sees the
+ * text the exporter meant instead of DOMPurify's re-escaped serialization.
+ */
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: "\u00a0",
+};
+
+export function decodeEntities(value: string): string {
+  return value.replace(/&(#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z]+);/g, (entity, body: string) => {
+    if (body.startsWith("#")) {
+      const hex = body[1] === "x" || body[1] === "X";
+      const code = Number.parseInt(hex ? body.slice(2) : body.slice(1), hex ? 16 : 10);
+      if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return entity;
+      try {
+        return String.fromCodePoint(code);
+      } catch {
+        return entity;
+      }
+    }
+    return NAMED_ENTITIES[body.toLowerCase()] ?? entity;
+  });
+}
 
 function textOf(html: string): string {
-  return html.replace(/<[^>]*>/g, "").trim();
+  return decodeEntities(html.replace(/<[^>]*>/g, "")).trim();
 }
 
 export interface ParsedHtmlFolder {
@@ -37,6 +69,8 @@ export interface ParsedHtmlFolder {
 export interface ParsedHtmlBookmark extends ResourceEntity {
   /** Source folder id; null only for a bookmark outside every folder. */
   folderId: string | null;
+  /** `TAGS="a,b"` attribute, decoded and de-duplicated. */
+  tags: string[];
 }
 
 // ---- Parse all bookmarks from an HTML string ----
@@ -142,8 +176,9 @@ export function parseHtmlBookmarks(html: string): {
     if (head.startsWith("<a")) {
       const attrs = match[2] ?? "";
       const href = HREF_RE.exec(attrs);
-      const url = href?.[1] ?? href?.[2] ?? href?.[3] ?? "";
-      if (!url) continue;
+      const rawUrl = href?.[1] ?? href?.[2] ?? href?.[3] ?? "";
+      if (!rawUrl) continue;
+      const url = decodeEntities(rawUrl);
 
       const rel = REL_RE.exec(attrs);
       const relValue = (rel?.[1] ?? rel?.[2] ?? rel?.[3] ?? "").toLowerCase().trim();
@@ -155,9 +190,29 @@ export function parseHtmlBookmarks(html: string): {
           }
         }
       }
+
+      const tags: string[] = [];
+      const tagsAttribute = TAGS_RE.exec(attrs);
+      const rawTags = tagsAttribute?.[1] ?? tagsAttribute?.[2] ?? tagsAttribute?.[3] ?? "";
+      for (const raw of rawTags.split(",")) {
+        const tag = decodeEntities(raw).trim();
+        if (tag && !tags.includes(tag)) {
+          tags.push(tag);
+          tagSet.add(tag);
+        }
+      }
+
       const title = textOf(match[3] ?? "");
       const folderId = currentFolder()?.id ?? rootFolder().id;
-      addBookmark(resources, url, title, folderId);
+      addBookmark(resources, url, title, folderId, tags);
+      continue;
+    }
+
+    if (head.startsWith("<dd")) {
+      const description = textOf(match[5] ?? "");
+      const last = resources[resources.length - 1];
+      // Netscape puts one <DD> directly after its bookmark; first one wins.
+      if (description && last && !last.description) last.description = description;
     }
   }
 
@@ -177,6 +232,7 @@ function addBookmark(
   url: string,
   title: string,
   folderId: string,
+  tags: string[],
 ): void {
   const normalized = normalizeUrl(url);
   let domain = "";
@@ -203,6 +259,7 @@ function addBookmark(
     extractionStatus: "complete",
     extractionNotes: [],
     folderId,
+    tags,
   });
 }
 
