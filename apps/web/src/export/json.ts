@@ -98,7 +98,7 @@ function serialize(
   );
   parts.push(
     `,"tags":${JSON.stringify(
-      source.tags.map((tag) => ({ _id: tag.id, title: tag.name, count: tag.count })),
+      source.tags.map((tag) => ({ _id: tag.id, tag: tag.name, count: tag.count })),
     )}`,
   );
   parts.push(`,"items":[`);
