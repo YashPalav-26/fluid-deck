@@ -17,6 +17,8 @@ describe("ViewState URL codec (DB-008)", () => {
       tags: ["react", "types"],
       date: "custom:1700000000000:1700086400000" as const,
       source: "extension" as const,
+      domain: "example.com",
+      unorganized: true,
       hasCode: true,
       hasImage: true,
       sort: "title-asc" as const,
@@ -24,6 +26,24 @@ describe("ViewState URL codec (DB-008)", () => {
     const encoded = encodeViewState(state);
     expect(decodeViewState(encoded)).toEqual(state);
     expect(decodeViewState(`?${encoded}`)).toEqual(state);
+  });
+
+  it("is backward compatible with pre-UI-004 URLs", () => {
+    const state = decodeViewState("q=react&type=article&sort=title-asc");
+    expect(state).toEqual({
+      ...EMPTY_VIEW_STATE,
+      q: "react",
+      type: "article",
+      sort: "title-asc",
+    });
+  });
+
+  it("normalizes the domain facet and drops it when empty", () => {
+    expect(decodeViewState("?domain=Example.COM").domain).toBe("example.com");
+    expect(decodeViewState("?domain=").domain).toBeUndefined();
+    expect(encodeViewState({ ...EMPTY_VIEW_STATE, domain: "example.com" })).toContain(
+      "domain=example.com",
+    );
   });
 
   it("omits defaults and an empty state encodes to an empty string", () => {
