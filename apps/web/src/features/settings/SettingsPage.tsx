@@ -14,6 +14,7 @@ import { useTheme } from "../../contexts/theme.tsx";
 import { useToast } from "../../contexts/toast.tsx";
 import { ConfirmDialog } from "../dialogs/ConfirmDialog.tsx";
 import { EmptyState } from "../dialogs/EmptyState.tsx";
+import { ImportDialog } from "../import-export/ImportDialog.tsx";
 
 async function readPrefs() {
   const [theme, days] = await Promise.all([
@@ -33,6 +34,7 @@ export function SettingsPage() {
   const prefs = useQuery({ queryKey: ["prefs"], queryFn: readPrefs });
   const [days, setDays] = useState(String(DEFAULT_PURGE_RETENTION_DAYS));
   const [purgeOpen, setPurgeOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const trashed = useQuery({
     queryKey: ["trashed-count"],
     queryFn: () => listTrashedResources(db),
@@ -120,6 +122,21 @@ export function SettingsPage() {
           </button>
         </section>
 
+        <section aria-label="Import">
+          <h3 className="text-base font-medium">Import</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Bring in browser bookmarks (HTML) or a Raindrop export (JSON). You see a preview and
+            resolve duplicates before anything is saved.
+          </p>
+          <button
+            type="button"
+            className="mt-3 rounded-md border px-3 py-1.5 text-sm"
+            onClick={() => setImportOpen(true)}
+          >
+            Import bookmarks…
+          </button>
+        </section>
+
         <section aria-label="Danger zone">
           <h3 className="text-base font-medium text-red-600">Danger zone</h3>
           {trashedCount === 0 ? (
@@ -151,6 +168,8 @@ export function SettingsPage() {
         onConfirm={() => purge.mutate(Number(days) || DEFAULT_PURGE_RETENTION_DAYS)}
         isPending={purge.isPending}
       />
+
+      <ImportDialog open={importOpen} onOpenChange={setImportOpen} />
     </section>
   );
 }
