@@ -8,6 +8,8 @@ import {
   RESOURCE_SOURCES,
   RESOURCE_TYPES,
   SCHEMA_VERSION,
+  SEARCH_FIELD_WEIGHTS,
+  tokenize,
 } from "./index.ts";
 
 describe("core public surface", () => {
@@ -35,5 +37,10 @@ describe("core public surface", () => {
     expect(Object.keys(DEFAULT_PREFERENCES).sort()).toEqual([...PREFERENCE_KEYS].sort());
     expect(DEFAULT_PREFERENCES.purgeRetentionDays).toBe("30");
     expect(isDepthWarning(4)).toBe(true);
+  });
+
+  it("exports the shared search tokenizer and its field weights", () => {
+    expect(tokenize("React Hooks")).toEqual(["react", "hooks"]);
+    expect(SEARCH_FIELD_WEIGHTS.title).toBe(3);
   });
 });
