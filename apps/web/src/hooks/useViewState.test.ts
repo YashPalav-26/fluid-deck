@@ -32,4 +32,35 @@ describe("parseRoute / buildRouteSearch", () => {
       page: null,
     });
   });
+
+  // UI-004: search query, facets and sort survive refresh/copy/back-forward.
+  it("round-trips search state", () => {
+    const route = {
+      view: {
+        ...EMPTY_VIEW_STATE,
+        q: "react hooks",
+        type: "article" as const,
+        source: "extension" as const,
+        domain: "example.com",
+        unorganized: true,
+        tags: ["react"],
+        sort: "relevance" as const,
+      },
+      trash: false,
+      page: null,
+    };
+    const search = buildRouteSearch(route);
+    expect(search).toContain("q=react+hooks");
+    expect(search).toContain("domain=example.com");
+    expect(search).toContain("unorganized=true");
+    expect(search).toContain("sort=relevance");
+    expect(parseRoute(search)).toEqual(route);
+  });
+
+  it("keeps search params alongside the legacy trash flag", () => {
+    const route = parseRoute("?q=react&view=trash");
+    expect(route.trash).toBe(true);
+    expect(route.view.q).toBe("react");
+    expect(buildRouteSearch({ ...route, view: EMPTY_VIEW_STATE })).toContain("view=trash");
+  });
 });
