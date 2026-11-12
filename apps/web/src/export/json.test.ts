@@ -44,7 +44,7 @@ interface ExportedFile {
   truncated: boolean;
   items: ExportedItem[];
   collections: Array<{ _id: string; title: string; parent: { $id: string } | null; sort: number }>;
-  tags: Array<{ _id: string; title: string; count: number }>;
+  tags: Array<{ _id: string; tag: string; count: number }>;
 }
 
 const fixture = useTestDatabase();
@@ -153,7 +153,7 @@ describe("IMPORT-006: JSON export", () => {
     expect(
       data["collections"].find((collection) => collection._id === tools.collection.id).parent,
     ).toEqual({ $id: dev.collection.id });
-    expect(data["tags"]).toEqual([{ _id: reading.tag.id, title: "reading", count: 1 }]);
+    expect(data["tags"]).toEqual([{ _id: reading.tag.id, tag: "reading", count: 1 }]);
     expect(beta.resource.id).toBeTruthy();
   });
 
