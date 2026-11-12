@@ -8,7 +8,7 @@
  * sidebar Trash entry needs it, and folding it into ViewState is a
  * SEARCH/UI-004 concern. Everything else round-trips through core.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { decodeViewState, encodeViewState, EMPTY_VIEW_STATE } from "@fluid-deck/core";
 import type { ViewState } from "@fluid-deck/core";
 
@@ -41,44 +41,78 @@ export function useViewState(): RouteState & {
   goSettings: () => void;
 } {
   const [route, setRoute] = useState<RouteState>(() => parseRoute(window.location.search));
+  // Synchronous mirror of `route`. Two writes in the same tick (e.g. a pending
+  // search commit followed by a facet click) must merge onto the newest view,
+  // not onto the view React rendered last.
+  const routeRef = useRef(route);
 
-  useEffect(() => {
-    const onPopState = () => setRoute(parseRoute(window.location.search));
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, []);
-
-  const navigate = useCallback((next: RouteState) => {
-    window.history.pushState(null, "", buildRouteSearch(next) || window.location.pathname);
+  const applyRoute = useCallback((next: RouteState) => {
+    routeRef.current = next;
     setRoute(next);
   }, []);
 
+  useEffect(() => {
+    const onPopState = () => applyRoute(parseRoute(window.location.search));
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [applyRoute]);
+
+  const navigate = useCallback(
+    (next: RouteState) => {
+      const nextSearch = buildRouteSearch(next);
+      // Writing the same URL again would add a history entry that back/forward
+      // has to step through for no visible change.
+      if (nextSearch !== window.location.search) {
+        window.history.pushState(null, "", nextSearch || window.location.pathname);
+      }
+      applyRoute(next);
+    },
+    [applyRoute],
+  );
+
   const updateView = useCallback(
     (patch: Partial<ViewState>, options: { trash?: boolean } = {}) => {
+      const current = routeRef.current;
       navigate({
-        view: { ...route.view, ...patch },
-        trash: options.trash ?? route.trash,
+        view: { ...current.view, ...patch },
+        trash: options.trash ?? current.trash,
         page: null,
       });
     },
-    [navigate, route],
+    [navigate],
   );
 
   const goAll = useCallback(
     () => navigate({ view: EMPTY_VIEW_STATE, trash: false, page: null }),
     [navigate],
   );
-  const goTrash = useCallback(
-    () => navigate({ view: route.view, trash: true, page: null }),
-    [navigate, route],
-  );
+  // Trash is browse-only (the index excludes soft-deleted rows), so entering
+  // it drops the search-specific params but keeps collection/tags/sort.
+  const goTrash = useCallback(() => {
+    const current = routeRef.current;
+    navigate({
+      view: {
+        ...current.view,
+        q: "",
+        type: undefined,
+        source: undefined,
+        domain: undefined,
+        date: undefined,
+        unorganized: false,
+        // Relevance needs a query; trash is browse-only.
+        sort: current.view.sort === "relevance" ? "newest" : current.view.sort,
+      },
+      trash: true,
+      page: null,
+    });
+  }, [navigate]);
   const goInbox = useCallback(
-    () => navigate({ view: route.view, trash: false, page: "inbox" }),
-    [navigate, route],
+    () => navigate({ view: routeRef.current.view, trash: false, page: "inbox" }),
+    [navigate],
   );
   const goSettings = useCallback(
-    () => navigate({ view: route.view, trash: false, page: "settings" }),
-    [navigate, route],
+    () => navigate({ view: routeRef.current.view, trash: false, page: "settings" }),
+    [navigate],
   );
 
   return { ...route, updateView, goAll, goTrash, goInbox, goSettings };
