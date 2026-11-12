@@ -7,10 +7,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ViewState } from "@fluid-deck/core";
 import { db } from "../persistence/db.ts";
-import { getLibraryResources } from "../services/library.ts";
+import { getLibraryResources, viewDateBounds } from "../services/library.ts";
+import { searchFaceted, syncResource } from "../services/search.ts";
 import { listCollections } from "../repositories/collections.ts";
 import { listTags } from "../repositories/tags.ts";
 import {
+  listDomains,
   markResourceOpened,
   restoreResource,
   softDeleteResource,
@@ -18,15 +20,50 @@ import {
 
 export const queryKeys = {
   resources: (view: ViewState, trash: boolean) => ["resources", view, trash] as const,
+  search: (view: ViewState) => ["search", view] as const,
+  domains: ["domains"] as const,
   collections: ["collections"] as const,
   tags: ["tags"] as const,
 };
 
-export function useResources(view: ViewState, trash: boolean) {
+export function useResources(view: ViewState, trash: boolean, options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: queryKeys.resources(view, trash),
     queryFn: () => getLibraryResources(db, view, { trash }),
+    enabled: options.enabled ?? true,
   });
+}
+
+/**
+ * UI-004 keyword path. The query key carries the whole ViewState, so a
+ * superseded query can never overwrite a newer result; `signal` is a second
+ * guard for work that finishes after unmount.
+ */
+export function useSearchResults(view: ViewState, options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: queryKeys.search(view),
+    queryFn: async ({ signal }) => {
+      const bounds = viewDateBounds(view.date);
+      const result = await searchFaceted(db, {
+        q: view.q,
+        type: view.type,
+        source: view.source,
+        domain: view.domain,
+        collection: view.collection,
+        tags: view.tags,
+        unorganized: view.unorganized,
+        dateRange: bounds,
+        sort: view.sort,
+      });
+      if (signal.aborted) throw new Error("Search superseded");
+      return result;
+    },
+    enabled: options.enabled ?? true,
+  });
+}
+
+export function useDomains() {
+  return useQuery({ queryKey: queryKeys.domains, queryFn: () => listDomains(db) });
 }
 
 export function useCollections() {
@@ -46,13 +83,18 @@ export async function invalidateResourceQueries(
   queryClient: ReturnType<typeof useQueryClient>,
 ): Promise<void> {
   await queryClient.invalidateQueries({ queryKey: ["resources"] });
+  await queryClient.invalidateQueries({ queryKey: ["search"] });
+  await queryClient.invalidateQueries({ queryKey: ["domains"] });
 }
 
 export function useTrashResource() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => softDeleteResource(db, id),
-    onSuccess: () => void invalidateResourceQueries(queryClient),
+    onSuccess: (resource) => {
+      void invalidateResourceQueries(queryClient);
+      void syncResource(db, resource);
+    },
   });
 }
 
@@ -60,7 +102,10 @@ export function useRestoreResource() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => restoreResource(db, id),
-    onSuccess: () => void invalidateResourceQueries(queryClient),
+    onSuccess: (resource) => {
+      void invalidateResourceQueries(queryClient);
+      void syncResource(db, resource);
+    },
   });
 }
 
@@ -68,6 +113,9 @@ export function useMarkOpened() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => markResourceOpened(db, id),
-    onSuccess: () => void invalidateResourceQueries(queryClient),
+    onSuccess: (_data, id) => {
+      void invalidateResourceQueries(queryClient);
+      void syncResource(db, id);
+    },
   });
 }
