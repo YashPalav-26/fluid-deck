@@ -18,6 +18,8 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { db } from "../../persistence/db.ts";
 import { useCollections } from "../../hooks/queries.ts";
+import { listCollectionMembers } from "../../repositories/relationships.ts";
+import { syncCollectionRename, syncResourcesBatch } from "../../services/search.ts";
 import {
   createCollection,
   deleteCollection,
@@ -190,6 +192,7 @@ export function CollectionsPanel({
         await createCollection(db, { name: value.trim(), parentId });
       } else if (dialog?.kind === "rename" && dialog.collection) {
         await renameCollection(db, dialog.collection.id, value.trim());
+        void syncCollectionRename(db, dialog.collection.id);
       }
       invalidate();
       setDialog(null);
@@ -205,7 +208,12 @@ export function CollectionsPanel({
     if (!dialog?.collection) return;
     setIsPending(true);
     try {
+      const members = await listCollectionMembers(db, dialog.collection.id);
       await deleteCollection(db, dialog.collection.id);
+      void syncResourcesBatch(
+        db,
+        members.map((r) => r.id),
+      );
       invalidate();
       setDialog(null);
       pushToast("Collection deleted");
