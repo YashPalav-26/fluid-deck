@@ -93,8 +93,9 @@ describe("IMPORT-007: export formats", () => {
     expect(exported.meta).toMatchObject({ resourceCount: 2, truncated: false });
     expect(html.startsWith("<!DOCTYPE NETSCAPE-Bookmark-file-1>")).toBe(true);
     expect(html).not.toContain("<script>alert");
-    expect(html).toContain('&lt;script&gt;alert("x")&lt;/script&gt; & more');
-    expect(html).toContain('HREF="https://alpha.example/one?a=1&b=2"');
+    expect(html).toContain('&lt;script&gt;alert("x")&lt;/script&gt; &amp; more');
+    expect(html).toContain('HREF="https://alpha.example/one?a=1&amp;b=2"');
+    expect(html).toContain('<DD>Line one\nLine "two", with comma');
     expect(html).toContain('TAGS="reading"');
     expect(html).not.toContain("https://gone.example/");
 
@@ -107,13 +108,17 @@ describe("IMPORT-007: export formats", () => {
     expect(html.slice(devAt, toolsAt)).toContain("<DL><p>");
 
     // Round-trip through our own HTML importer: resources plus folder membership.
-    // `&` comes back as `&amp;`: DOMPurify re-escapes it and the IMPORT-001 parser
-    // does not decode entities (importer-side gap, documented in the report).
+    // Entities are decoded once, so `&` and escape-sensitive text come back intact.
     const imported = validateHtmlImport(html);
     expect(imported.resources.map((resource) => resource.input.url).sort()).toEqual([
-      "https://alpha.example/one?a=1&amp;b=2",
+      "https://alpha.example/one?a=1&b=2",
       "https://beta.example/two",
     ]);
+    const importedAlpha = imported.resources.find((resource) =>
+      resource.input.url.includes("alpha.example"),
+    );
+    expect(importedAlpha?.input.description).toBe('Line one\nLine "two", with comma');
+    expect(importedAlpha?.meta.tags).toEqual(["reading"]);
     expect(imported.collections.map((collection) => collection.name)).toEqual(
       expect.arrayContaining(["Dev", "Tools", "Unorganized"]),
     );
