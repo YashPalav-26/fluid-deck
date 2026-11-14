@@ -90,6 +90,37 @@ describe("ImportDialog", () => {
     ).toBe(1);
   });
 
+  it("moves focus to the error heading when the file cannot be parsed", async () => {
+    const database = fixture.db;
+    renderDialog(database);
+
+    upload("{ not json");
+
+    const heading = await screen.findByRole("heading", { name: "This file could not be imported" });
+    // The file input unmounts with the error, so focus must not fall to the body.
+    await waitFor(() => expect(heading).toHaveFocus());
+  });
+
+  it("moves focus to the summary when the import completes", async () => {
+    const database = fixture.db;
+    renderDialog(database);
+
+    upload(IMPORT_JSON);
+    // Nothing exists yet, so both items in the file are new.
+    await waitFor(() => expect(count("New resources")).toBe("2"));
+    fireEvent.click(screen.getByRole("button", { name: "Import now" }));
+
+    // The commit is asynchronous; under load the summary can take a moment.
+    const summary = await screen.findByText(
+      /Imported 2 new resources/,
+      { selector: "p" },
+      { timeout: 5000 },
+    );
+    // The "Import now" button unmounts with the summary, so focus must follow it.
+    await waitFor(() => expect(summary).toHaveFocus());
+    expect(summary).toHaveAttribute("role", "status");
+  });
+
   it("writes nothing when the preview is dismissed", async () => {
     const database = fixture.db;
     await createResource(database, { url: "https://dialog.example/existing", title: "Original" });
