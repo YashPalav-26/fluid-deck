@@ -100,6 +100,19 @@ export function ExportDialog({
       description="Download the library as JSON, HTML bookmarks, Markdown or CSV. Trashed items are never included."
     >
       <div className="space-y-4">
+        {error ? (
+          <p
+            role="alert"
+            className="rounded-md border border-red-300 p-2 text-sm text-red-700 dark:border-red-700 dark:text-red-300"
+          >
+            {error}
+          </p>
+        ) : null}
+        {run.isPending ? (
+          <p role="status" aria-live="polite" className="text-sm text-slate-500">
+            Exporting your library…
+          </p>
+        ) : null}
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium">What to export</legend>
           <label className="flex items-center gap-2 text-sm">
@@ -183,7 +196,7 @@ export function ExportDialog({
         <div className="flex justify-end gap-2">
           <button
             type="button"
-            className="rounded-md border px-3 py-1.5 text-sm"
+            className="rounded-md border px-3 py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2"
             onClick={() => handleOpenChange(false)}
             disabled={run.isPending}
           >
@@ -191,19 +204,13 @@ export function ExportDialog({
           </button>
           <button
             type="button"
-            className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
+            className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 dark:bg-slate-100 dark:text-slate-900"
             onClick={() => run.mutate()}
             disabled={run.isPending || (kind === "collection" && collectionId === "")}
           >
             {run.isPending ? "Exporting." : "Export file"}
           </button>
         </div>
-
-        {error ? (
-          <p role="alert" className="text-sm text-red-600">
-            {error}
-          </p>
-        ) : null}
       </div>
     </DialogShell>
   );
