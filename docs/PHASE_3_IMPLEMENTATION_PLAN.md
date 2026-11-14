@@ -65,7 +65,7 @@ No circular chains (verified §11 of breakdown). Longest path: M0→M1→M2→M3
 | M4 CRUD | Resource CRUD + grid + cards (seed data) | 20–28 | UI-001–005 green; TanStack CRUD works |
 | M5 Collections/Tags | Nesting, tagging, inbox, palette | 20–26 | UI-006–011 green |
 | M6 Extension | Production capture via proven bridge | 15–22 | EXT-001–007 green; ack-after-commit e2e |
-| M7 Search | MiniSearch + facets + benchmark report | 15–22 | SEARCH-001–008 green; p95 measured |
+| M7 Search | MiniSearch + facets + benchmark report | 26 (SEARCH-001–008 21h + UI-004 5h) | SEARCH-001–008 + UI-004 green; p95 measured |
 | M8 Import/Export | HTML/JSON in; JSON/HTML/MD/CSV out | 20–30 | IMPORT-001–009 green; round-trip pass |
 | M9 Hardening | Reliability, a11y, perf, security pass | 20–30 | TEST-001–008 green; axe-core 0 critical |
 | M10 Release | Store listing, privacy policy, MVP tag | 10–16 | Phase 4 checklist (§12) all green |
@@ -104,7 +104,7 @@ Top risks (full register in Phase 2.9 review §8): bridge spoofing (RSK-01, High
 **Failure rule:** bridge PoC fail → stop, redesign (pairing secret or local HTTP) with new ADR before Phase 4.
 
 ## 13. Estimated Effort
-Engineering effort (excludes reviews/approvals/calendar waits): M0 2–4h, M1 12–20h, M2 8–12h, M3 20–30h, M4 20–28h, M5 20–26h, M6 15–22h, M7 15–22h, M8 20–30h, M9 20–30h, M10 10–16h → **~162–240h total** (breakdown sums ~140–180h for the 85 tasks + 20–60h for reviews/fixes). Calendar dates **not** invented — depends on throughput.
+Engineering effort (excludes reviews/approvals/calendar waits): M0 2–4h, M1 12–20h, M2 8–12h, M3 20–30h, M4 20–28h, M5 20–26h, M6 15–22h, M7 26h (SEARCH-001–008 21h + UI-004 5h), M8 20–30h, M9 20–30h, M10 10–16h → **~173–251h total** (breakdown sums ~140–180h for the 85 tasks + 20–60h for reviews/fixes). Calendar dates **not** invented — depends on throughput.
 
 ## 14. Implementation Execution Order
 M0 → M1 → M2 → M3 → (M4 ∥ M7-scaffolding) → M5 → M6 → M7 → M8 → M9 → M10. Parallelizable: UI shell (M4/M5) with search after M3; import scaffolding after M3. **Never parallel:** two edits to same file; migration design vs repo impl.
