@@ -293,3 +293,17 @@ search Playwright configs. Only then declare the baseline reproducible.
 - [ ] The decision register and the search architecture document agree on the worker
 - [ ] The bundle entry stays <= 250 kB gzip (currently 241.30 kB with search included)
 - [ ] No `node_modules`, scratch capture or benchmark dump is tracked
+
+## 8. Resolution status (2026-11-14, M9-006)
+
+| Step | Status |
+| --- | --- |
+| M9-001 repair the broken test file | done - `61d8b96` |
+| M9-002 land the core package | done - `6d0ac4f`, `4a6d18e`, `409d69c`, `c21e4b6` |
+| M9-003 land the dependency pair | done - `7ac508a`, `1e28624` |
+| M9-004 land the search modules | done - `57331fe` .. `b29a16a` (76 unused alias exports removed) |
+| M9-005 land the UI and integration layer + the import-to-search sync | done - `93a7417` .. `460b7cf` (26 commits) |
+| M9-006 merge the documentation + remove the dead shims | this task |
+| M9-007 clean-clone gate | green at `460b7cf`: install, typecheck (5/5), 57 files / 499 tests, build, 26 Playwright tests |
+| Scratch captures and `poc/` | deliberately never committed; `poc/` stays outside the production cleanup boundary |
+| Search worker / benchmark specs and their Playwright configs | left uncommitted on purpose - M9-040 owns the test separation and the explicit browser matrix |
