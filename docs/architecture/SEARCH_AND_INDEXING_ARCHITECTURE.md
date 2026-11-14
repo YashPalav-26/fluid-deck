@@ -4,10 +4,12 @@
 *Sources: PRODUCT_REQUIREMENTS_DOCUMENT (FR-SRH-001–007, NFR-PER-004), INFORMATION_ARCHITECTURE, SYSTEM_ARCHITECTURE (Phase 2.1), DATABASE_SCHEMA_AND_MIGRATIONS (Phase 2.2), EXTENSION_WEB_COMMUNICATION_CONTRACTS (Phase 2.3)*
 
 > Design-only. No code, no MiniSearch implementation, no workers. All performance figures are **proposed targets** (PRD is the acceptance range), to be benchmarked in Phase 4 — they are not measured results.
+>
+> **2026-11-11 SEARCH-007 amendment:** the measured 10k rebuild (6,212.5 ms) exceeded the 500 ms worker trigger. Worker optimization is activated in the decision register (`SEARCH-007`) and `docs/SPRINT_6_WORKER_DECISION.md`. A worker implementation was shipped in SEARCH-008 (`apps/web/src/services/search.worker.ts`); it is a separate lazy chunk excluded from initial JS gzip budget. The no-worker statements below describe the pre-benchmark design and are superseded for implementation planning only; the core design (rebuild-on-start, no persistence, facets in Dexie) remains valid.
 
 ## 0. Summary
 
-One in-memory MiniSearch index, **rebuilt from Dexie on every app start** (no persistence, no worker). Facets are computed in the Search Service over candidate IDs from indexed Dexie queries, then intersected with MiniSearch hits. Ranking = MiniSearch field weights + two explicit rules (exact-title-first); nothing ML. Dexie remains the sole source of truth; the index is disposable.
+One in-memory MiniSearch index, **rebuilt from Dexie on every app start** (no persistence). Facets are computed in the Search Service over candidate IDs from indexed Dexie queries, then intersected with MiniSearch hits. Ranking = MiniSearch field weights + two explicit rules (exact-title-first); nothing ML. Dexie remains the sole source of truth; the index is disposable. [The SEARCH-008 worker is a separate lazy chunk offloading build/query; the main-thread fallback remains the baseline.]
 
 ## 1. Searchable Data Model (§4)
 
@@ -112,7 +114,7 @@ One custom tokenizer used at *both* index time and query time (same function —
 
 ## 6. Rebuild & Recovery (§9)
 
-**Decision: rebuilt on every app startup; not persisted; no workers.** At 10k resources the build is a single indexed scan + in-memory construction — estimated well under the 500ms first-paint budget; run *after* first paint (chunked async build, skeleton/grid shows cached query results only from the *previous* session? No — **cold start shows empty results with a brief "Indexing…" state** rather than lying with a stale index. Simpler and honest.) Estimated build cost is stated as a *target* to benchmark in Phase 4, not a claim.
+**Decision: rebuilt on every app startup; not persisted. A Web Worker seam (SEARCH-008) offloads MiniSearch build/query to a disposable off-thread chunk; the main-thread fallback remains available. At 10k resources the build with worker is ~334 ms vs 6,212 ms main-thread; the worker removes work from the UI thread but does not by itself meet the 50 ms query/facet budgets (facets remain DB-scan-bound). No worker source was needed for the baseline design; the worker is an off-load optimization activated by the measured trigger.**
 
 - **Persistence? Rejected.** MiniSearch's serialization (JSON of terms) is ~2–5× the raw text size; persisting it to IndexedDB buys nothing when rebuild is cheap, and adds a cache-invalidation problem on top of a solved one. The in-memory index is *itself* the cache — rebuilt and discarded freely.
 - **Versioning? One integer, one use:** store a `searchSchemaVersion` marker in `preferences`; on version bump, rebuild (same as every startup — the marker is only meaningful if the app is kept running across a migration, which is a Phase 4+ concern; included so the seam exists).
@@ -135,7 +137,7 @@ One custom tokenizer used at *both* index time and query time (same function —
 
 - **Incremental update:** 1 doc add/replace/remove — negligible (<1 ms target); batch combines happen only for import (500/batch).
 - **Debounce UI input 150 ms** (IA §7), show skeleton if query >100 ms; **query cancellation**: trivially safe — each query runs in one synchronous pass over the in-memory index; latest-wins flag discards stale results (no worker queue to cancel).
-- **Web Workers: rejected for MVP.** MiniSearch search is synchronous and fast; workers add postMessage serialization of results and a second code path (WXT background vs worker). Add only if measured build time at 10k exceeds the 500 ms target.
+- **Web Workers:** measured build at 10k exceeds the 500 ms trigger (6,212.5 ms main-thread, 334.2 ms worker recheck). Worker off-load is activated per SEARCH-007/SEARCH-008; the main-thread fallback remains available. Add only if measured-necessary for the off-load win; the worker does not by itself make the 50 ms query/facet budgets.
 - **Memory:** index ≈ a few × raw text size; at 10k resources with ~200 chars/doc ≈ low tens of MB — acceptable; at 50k+ this becomes the documented FTS5 migration trigger (PRD §19.1).
 
 ## 8. Search Service & Package Boundaries (§11)
@@ -146,8 +148,8 @@ One custom tokenizer used at *both* index time and query time (same function —
 
 ## 9. Decisions, Risks, Traceability (§13)
 
-**Decisions:** rebuild-on-every-start (no persistence); single shared tokenizer; AND-then-OR; facets-in-Dexie + intersection-in-service; chunked async build after first paint; no workers; exact-title pin as the only custom rank rule.
-**Alternatives rejected:** persisted MiniSearch index (solves a cheap problem expensively); Web Worker indexing (no measured need); FTS5/SQLite now (premature — Phase 8+ seam); semantic/hybrid search (explicitly excluded from MVP); stemming/synonyms (complexity without demand); notes search (defer until asked).
+**Decisions:** rebuild-on-every-start (no persistence); single shared tokenizer; AND-then-OR; facets-in-Dexie + intersection-in-service; chunked async build after first paint; Web Worker seam activated (SEARCH-008) — offloads build/query to a disposable off-thread chunk; main-thread fallback remains; exact-title pin as the only custom rank rule.
+**Alternatives rejected:** persisted MiniSearch index (solves a cheap problem expensively); Web Worker indexing (measured: 334 ms rebuild with worker vs 6,212 ms main-thread; off-load win exists but does not by itself meet 50 ms query/facet budgets — facets remain DB-scan-bound); FTS5/SQLite now (premature — Phase 8+ seam); semantic/hybrid search (explicitly excluded from MVP); stemming/synonyms (complexity without demand); notes search (defer until asked).
 **Risks:** build blocking first paint → chunked post-paint build + honest "Indexing…" state; memory at 50k → documented FTS5 trigger; fuzzy+prefix interaction surprises → small test corpus in Phase 4, tokenizer single-sourced.
 **Phase 2.2 U1–U6 carried forward unchanged** (none is search-blocking; U2 collection-depth warning affects only how deep the descendant-expansion facet query walks — bounded by the ≤3-level recommendation).
 **Traceability:** FR-SRH-001 (MiniSearch + <50ms p95 → §§1–3, 7) · FR-SRH-002 (facets OR/tags → §4) · FR-SRH-003 (URL state → §1 layer 3) · FR-SRH-004/007 (chips/empty states → §4, output shaping) · FR-SRH-005 (sorts → §4) · FR-SRH-006 (highlighting → §1 stored fields) · NFR-PER-004 (latency target → §7, labeled unmeasured) · Phase 2.1 §§3/6/8 (Search Service ownership, derived index) ✓ · Phase 2.2 §5 (MiniSearch derivation) ✓ · Phase 2.3 §5.4 (index-after-commit) ✓.
@@ -219,3 +221,8 @@ flowchart TB
     WEB --> UI
     CORE -.->|"no browser globals<br/>no MiniSearch"| NUL["(testable in Vitest)"]
     UI --> CORE
+
+
+---
+
+**2026-11-14 (M9-006):** the worker seam described above is committed - `apps/web/src/services/search.worker.ts` (`40709ce`), `search-worker-core.ts` (`e49ed56`) and `search-worker-protocol.ts` (`a46dead`), wired through `search.ts` (`820a637`), with the main-thread fallback intact. The production build emits the worker as a separate lazy chunk, so the initial JS gzip budget (250 kB) covers only the entry chunk; the measured entry is 241.33 kB gzip at `460b7cf`.
