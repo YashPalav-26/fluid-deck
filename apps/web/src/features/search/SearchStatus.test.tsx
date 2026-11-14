@@ -80,4 +80,17 @@ describe("SearchStatus", () => {
     render(<SearchStatus {...base} query="" total={2} returned={2} />);
     expect(screen.getByTestId("search-status")).toHaveTextContent("2 matches");
   });
+
+  it("keeps one stable live region so updates are announced", () => {
+    const { rerender } = render(<SearchStatus {...base} total={1} returned={1} />);
+    const status = screen.getByTestId("search-status");
+    expect(status).toHaveAttribute("role", "status");
+    expect(status).toHaveAttribute("aria-live", "polite");
+
+    // The same element must survive the switch to the error state, otherwise a
+    // screen reader never hears the change.
+    rerender(<SearchStatus {...base} isError onRetry={() => {}} />);
+    expect(screen.getByTestId("search-status")).toBe(status);
+    expect(screen.getByRole("alert")).toHaveTextContent("Search failed");
+  });
 });
