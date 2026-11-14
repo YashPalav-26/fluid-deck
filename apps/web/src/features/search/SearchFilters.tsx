@@ -196,7 +196,9 @@ export function SearchFilters({
           onChange={(event) => onChange({ unorganized: event.target.checked })}
         />
         Unorganized
-        {counts ? <span className="text-xs text-slate-400">({counts.unorganized})</span> : null}
+        {counts ? (
+          <span className="text-xs text-slate-500 dark:text-slate-400">({counts.unorganized})</span>
+        ) : null}
       </label>
 
       <details className="basis-full">
@@ -217,7 +219,9 @@ export function SearchFilters({
                 />
                 {tag.name}
                 {counts ? (
-                  <span className="text-xs text-slate-400">({counts.tag[tag.id] ?? 0})</span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    ({counts.tag[tag.id] ?? 0})
+                  </span>
                 ) : null}
               </label>
             ))
