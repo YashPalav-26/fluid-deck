@@ -14,7 +14,9 @@
     "build:ext": "pnpm --filter @fluid-deck/extension build",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
-    "test:e2e": "playwright test",
+    "test:e2e": "pnpm build && playwright test --project=chromium --project=firefox --project=edge",
+    "test:e2e:preview": "pnpm --filter @fluid-deck/web build && playwright test --config=playwright.preview.config.ts",
+    "test:e2e:benchmark": "playwright test --config=playwright.benchmark.config.ts",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
