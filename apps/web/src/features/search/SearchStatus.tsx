@@ -35,21 +35,9 @@ export function SearchStatus({
   // instead of showing an empty result set.
   const indexing = hasQuery && !index.ready && index.status !== "error";
 
-  if (isError) {
-    return (
-      <p
-        data-testid="search-status"
-        role="alert"
-        className="mb-3 rounded-md border border-red-300 p-3 text-sm"
-      >
-        Search failed. Your data is untouched.{" "}
-        <button type="button" className="underline" onClick={onRetry}>
-          Try again
-        </button>
-      </p>
-    );
-  }
-
+  // One live region for the whole component: replacing the element (or its
+  // role) would drop the announcement, because a live region only speaks when
+  // its *content* changes.
   let message = "";
   if (indexing) {
     const progress =
@@ -68,18 +56,30 @@ export function SearchStatus({
 
   return (
     <div data-testid="search-status" role="status" aria-live="polite" className="mb-3 text-sm">
-      <p className="text-slate-500">{message}</p>
-      {truncated && !isLoading && !indexing ? (
-        <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-          {truncatedCount.toLocaleString()} more matches are hidden by the{" "}
-          {returned.toLocaleString()}-result limit. Narrow the search or add filters to see them.
+      {isError ? (
+        <p role="alert" className="rounded-md border border-red-300 p-3 text-sm">
+          Search failed. Your data is untouched.{" "}
+          <button type="button" className="underline" onClick={onRetry}>
+            Try again
+          </button>
         </p>
-      ) : null}
-      {partial && !indexing ? (
-        <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-          The index was still updating, so this list may be incomplete.
-        </p>
-      ) : null}
+      ) : (
+        <>
+          <p className="text-slate-500">{message}</p>
+          {truncated && !isLoading && !indexing ? (
+            <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+              {truncatedCount.toLocaleString()} more matches are hidden by the{" "}
+              {returned.toLocaleString()}-result limit. Narrow the search or add filters to see
+              them.
+            </p>
+          ) : null}
+          {partial && !indexing ? (
+            <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+              The index was still updating, so this list may be incomplete.
+            </p>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }
