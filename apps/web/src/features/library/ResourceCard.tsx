@@ -73,7 +73,7 @@ export const ResourceCard = memo(function ResourceCard({
         </span>
         <span className="truncate text-xs text-slate-500">{resource.domain}</span>
       </div>
-      <h3 className="text-base font-medium text-slate-900 dark:text-slate-100">
+      <h2 className="text-base font-medium text-slate-900 dark:text-slate-100">
         <a
           href={resource.url}
           target="_blank"
@@ -83,7 +83,7 @@ export const ResourceCard = memo(function ResourceCard({
         >
           {resource.title}
         </a>
-      </h3>
+      </h2>
       {resource.description ? (
         <p className="line-clamp-3 text-sm text-slate-600 dark:text-slate-400">
           {resource.description}
