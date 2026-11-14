@@ -48,6 +48,7 @@
 - **Status:** Accepted | 2.4 §6, 2.6 §4
 - Choice: chunked post-paint rebuild; "Indexing…" degraded mode (browse-only); version marker in `preferences`.
 - Alternatives: persisted index (rejected: rebuild is cheaper than cache coherence; JSON 2–5× text size), workers (deferred: only if measured build >500ms at 10k — Phase 4 test).
+- **2026-11-11 amendment:** SEARCH-007 measured 10k rebuild at **6,212.5 ms**, exceeding the 500 ms trigger. A worker implementation was shipped in SEARCH-008 (`apps/web/src/services/search.worker.ts`); it is a separate lazy chunk excluded from initial JS gzip budget. Worker optimization is **activated** in the decision register (`SEARCH-007`; `docs/SPRINT_6_WORKER_DECISION.md`). Rebuild-on-start/no-persistence remains; the worker is an off-load optimization. The prior no-worker default is superseded for implementation planning only until a separately authorized worker task lands.
 
 ## ADR-009 — Durable Outbox + At-Least-Once Delivery
 - **Status:** Accepted | 2.1 §10, 2.3 §5, 2.6 §3 | Related: FR-CAP
@@ -103,3 +104,8 @@
 - Related: FR-STO-007/008, FR-PRI-002. U5 (30-day purge) is NOT decided by this ADR — see U-register.
 
 **Status caveat:** ADR-019's numeric targets and ADR-009's retry values are **Proposed**; everything else is **Accepted** for Phase 3 planning. Product policies U1–U6 are not ADRs (unresolved, §U-register in the final review).
+
+
+---
+
+**2026-11-14 (M9-006):** the worker implementation referenced above is committed - `apps/web/src/services/search.worker.ts` (`40709ce`), `search-worker-core.ts` (`e49ed56`), `search-worker-protocol.ts` (`a46dead`), wired through `search.ts` (`820a637`). The production build emits it as a separate lazy chunk (`search.worker-*.js`), so it stays outside the initial JS gzip budget; the main-thread fallback remains the baseline path.
