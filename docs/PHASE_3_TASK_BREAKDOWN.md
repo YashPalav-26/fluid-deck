@@ -105,4 +105,4 @@
 | TEST-007 | Store listing + privacy policy + permissions doc | High | EXT-005 | 2 | `<all_urls>` justified in listing | M10 |
 | TEST-008 | MVP release tag + smoke checklist | High | TEST-002 | 2 | All §12 gates green | M10 |
 
-*UI-004 depends on SEARCH-002 (counted under M7). Total tasks: 64; sum ≈ 165h + reviews.*
+*UI-004 depends on SEARCH-002 (counted under M7). Total tasks: 64; sum ≈ 209.5h + reviews.*
