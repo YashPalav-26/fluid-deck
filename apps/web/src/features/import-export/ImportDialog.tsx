@@ -67,6 +67,8 @@ export function ImportDialog({
   const [progress, setProgress] = useState<ImportCommitProgress | null>(null);
   const [result, setResult] = useState<ImportCommitResult | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const problemHeading = useRef<HTMLHeadingElement>(null);
+  const summary = useRef<HTMLParagraphElement>(null);
 
   const reset = () => {
     setStage("idle");
@@ -83,6 +85,19 @@ export function ImportDialog({
   useEffect(() => {
     if (open && !problem && stage === "idle" && !reading) fileInput.current?.focus();
   }, [open, problem, stage, reading]);
+
+  // The picker unmounts when the error summary replaces it, so focus would fall
+  // back to the document. Move it to the error heading instead.
+  useEffect(() => {
+    if (open && problem) problemHeading.current?.focus();
+  }, [open, problem]);
+
+  // The "Import now" button unmounts when the summary replaces the preview, so
+  // focus would fall back to the document. Move it to the summary, which is a
+  // live region, so the result is announced as well.
+  useEffect(() => {
+    if (open && stage === "done") summary.current?.focus();
+  }, [open, stage]);
 
   const commit = useMutation({
     mutationFn: async () => {
@@ -184,6 +199,8 @@ export function ImportDialog({
         <div role="alert" aria-labelledby="import-problem-title" className="space-y-3">
           <h3
             id="import-problem-title"
+            ref={problemHeading}
+            tabIndex={-1}
             className="text-sm font-semibold text-red-700 dark:text-red-400"
           >
             {problem.title}
@@ -303,7 +320,10 @@ export function ImportDialog({
                 {preview.conflicts.map((conflict) => (
                   <li key={conflict.canonicalUrl}>
                     <fieldset>
-                      <legend className="w-full truncate text-sm">
+                      <legend
+                        className="w-full truncate text-sm"
+                        title={conflict.incoming.title || conflict.incoming.url}
+                      >
                         {conflict.incoming.title || conflict.incoming.url}
                       </legend>
                       <p className="truncate text-xs text-slate-500">
@@ -375,7 +395,7 @@ export function ImportDialog({
 
       {!problem && stage === "done" && result ? (
         <div className="space-y-4">
-          <p className="text-sm">
+          <p ref={summary} tabIndex={-1} role="status" className="text-sm">
             Imported {result.created} new resources. {result.updated} updated,{" "}
             {result.addedToCollections} added to collections, {result.duplicates} duplicate
             {result.duplicates === 1 ? "" : "s"} matched.
